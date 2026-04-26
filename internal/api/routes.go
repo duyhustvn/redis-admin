@@ -22,6 +22,12 @@ type Deps struct {
 	GetSlowlog      echo.HandlerFunc
 	GetPipeline     echo.HandlerFunc
 
+	// Phase 3
+	GetMemory    echo.HandlerFunc
+	StreamBigkeys echo.HandlerFunc
+	GetHotkeys   echo.HandlerFunc
+	GetTTLReport echo.HandlerFunc
+
 	Logger *zap.Logger
 }
 
@@ -50,5 +56,19 @@ func RegisterRoutes(e *echo.Echo, deps Deps) {
 	}
 	if deps.GetPipeline != nil {
 		v1.GET("/diagnostics/pipeline", deps.GetPipeline)
+	}
+
+	// Phase 3
+	if deps.GetMemory != nil {
+		v1.GET("/diagnostics/memory", deps.GetMemory)
+	}
+	if deps.StreamBigkeys != nil {
+		v1.GET("/keys/bigkeys", deps.StreamBigkeys)
+	}
+	if deps.GetHotkeys != nil {
+		v1.GET("/keys/hotkeys", deps.GetHotkeys)
+	}
+	if deps.GetTTLReport != nil {
+		v1.GET("/keys/ttl-report", deps.GetTTLReport)
 	}
 }

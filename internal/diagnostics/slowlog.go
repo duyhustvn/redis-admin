@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/duydinhle/redis-sentinel-admin/internal/config"
@@ -25,10 +26,17 @@ type SlowlogEntry struct {
 	ClientName string    `json:"client_name,omitempty"`
 }
 
+// evictedSample stores a single evicted_keys snapshot for delta rate calculation.
+type evictedSample struct {
+	count int64
+	at    time.Time
+}
+
 // Service exposes diagnostics operations across the cluster.
 type Service interface {
 	GetSlowlog(ctx context.Context, limit int) ([]SlowlogEntry, error)
 	GetPipelineStats(ctx context.Context) ([]PipelineReport, error)
+	GetMemory(ctx context.Context) ([]MemoryReport, error)
 }
 
 // DiagnosticsService implements Service.
@@ -36,11 +44,20 @@ type DiagnosticsService struct {
 	cfg         *config.Config
 	sentinelSvc sentinel.Service
 	logger      *zap.Logger
+
+	// State for eviction rate calculation (guarded by mu).
+	mu          sync.Mutex
+	lastEvicted map[string]evictedSample
 }
 
 // New creates a DiagnosticsService.
 func New(cfg *config.Config, svc sentinel.Service, logger *zap.Logger) *DiagnosticsService {
-	return &DiagnosticsService{cfg: cfg, sentinelSvc: svc, logger: logger}
+	return &DiagnosticsService{
+		cfg:         cfg,
+		sentinelSvc: svc,
+		logger:      logger,
+		lastEvicted: make(map[string]evictedSample),
+	}
 }
 
 // GetSlowlog pulls SLOWLOG GET from every node, merges all entries, sorts by

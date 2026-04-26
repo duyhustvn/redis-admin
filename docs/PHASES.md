@@ -50,13 +50,13 @@ Status legend: ✅ Done | 🚧 In Progress | ⬜ Not Started
 
 | # | Feature | Package | Endpoint | Status |
 |---|---|---|---|---|
-| 3.1 | Non-blocking big key scanner (`SCAN` + `MEMORY USAGE`, SSE stream) | `internal/keys/scanner.go` | `GET /api/v1/keys/bigkeys` | ⬜ |
-| 3.2 | Results grouped by namespace prefix (`user:*`, `session:*`) | `internal/keys/scanner.go` | included in bigkeys | ⬜ |
-| 3.3 | Hot key detector via `OBJECT FREQ` (requires LFU policy) | `internal/keys/hotkey.go` | `GET /api/v1/keys/hotkeys` | ⬜ |
-| 3.4 | TTL health report — % keys without TTL per namespace | `internal/keys/ttl.go` | `GET /api/v1/keys/ttl-report` | ⬜ |
-| 3.5 | Memory fragmentation ratio alert (`mem_fragmentation_ratio` > 1.5) | `internal/diagnostics/memory.go` | `GET /api/v1/diagnostics/memory` | ⬜ |
-| 3.6 | Eviction rate monitor (`evicted_keys` delta/sec) | `internal/diagnostics/memory.go` | included in memory | ⬜ |
-| 3.7 | RDB/AOF persistence health check | `internal/diagnostics/memory.go` | included in memory | ⬜ |
+| 3.1 | Non-blocking big key scanner (`SCAN` + `MEMORY USAGE`, SSE stream) | `internal/keys/scanner.go` | `GET /api/v1/keys/bigkeys` | ✅ |
+| 3.2 | Results grouped by namespace prefix (`user:*`, `session:*`) | `internal/keys/scanner.go` | included in bigkeys | ✅ |
+| 3.3 | Hot key detector via `OBJECT FREQ` (requires LFU policy) | `internal/keys/hotkey.go` | `GET /api/v1/keys/hotkeys` | ✅ |
+| 3.4 | TTL health report — % keys without TTL per namespace | `internal/keys/ttl.go` | `GET /api/v1/keys/ttl-report` | ✅ |
+| 3.5 | Memory fragmentation ratio alert (`mem_fragmentation_ratio` > 1.5) | `internal/diagnostics/memory.go` | `GET /api/v1/diagnostics/memory` | ✅ |
+| 3.6 | Eviction rate monitor (`evicted_keys` delta/sec) | `internal/diagnostics/memory.go` | included in memory | ✅ |
+| 3.7 | RDB/AOF persistence health check | `internal/diagnostics/memory.go` | included in memory | ✅ |
 
 **Completion criteria**: `curl /api/v1/keys/hotkeys?top=20` returns ranked hot keys. Big key SSE scan streams results without noticeably impacting Redis. All documented in Swagger.
 

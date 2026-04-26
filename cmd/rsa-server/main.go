@@ -25,6 +25,7 @@ import (
 	"github.com/duydinhle/redis-sentinel-admin/internal/connection"
 	"github.com/duydinhle/redis-sentinel-admin/internal/diagnostics"
 	"github.com/duydinhle/redis-sentinel-admin/internal/k8s"
+	"github.com/duydinhle/redis-sentinel-admin/internal/keys"
 	"github.com/duydinhle/redis-sentinel-admin/internal/sentinel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -82,6 +83,7 @@ func main() {
 	// ── Domain services ───────────────────────────────────────────────────────
 	connSvc := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
 	diagSvc := diagnostics.New(cfg, sentinelSvc, logger)
+	keysSvc := keys.New(cfg, sentinelSvc, logger)
 
 	// ── HTTP server ───────────────────────────────────────────────────────────
 	srv := api.New(cfg, logger)
@@ -95,6 +97,11 @@ func main() {
 		GetDistribution: handlers.GetDistribution(connSvc),
 		GetSlowlog:      handlers.GetSlowlog(diagSvc),
 		GetPipeline:     handlers.GetPipelineStats(diagSvc),
+
+		GetMemory:     handlers.GetMemory(diagSvc),
+		StreamBigkeys: handlers.StreamBigkeys(keysSvc),
+		GetHotkeys:    handlers.GetHotkeys(keysSvc),
+		GetTTLReport:  handlers.GetTTLReport(keysSvc),
 
 		Logger: logger,
 	})

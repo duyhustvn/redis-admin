@@ -195,6 +195,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/diagnostics/memory": {
+            "get": {
+                "description": "Returns memory fragmentation, eviction rate, and persistence health for every cluster node.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "diagnostics"
+                ],
+                "summary": "Memory health report",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.MemoryReport"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/diagnostics/pipeline": {
             "get": {
                 "description": "Collects EXECABORT error counts, rejected_calls, maximum input buffer size, and oversized pipeline client counts (qbuf \u003e 1 MiB) from every node.",
@@ -407,6 +460,148 @@ const docTemplate = `{
                                     "properties": {
                                         "data": {
                                             "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/keys/bigkeys": {
+            "get": {
+                "description": "Streams big keys found via non-blocking SCAN as Server-Sent Events. Each event is a KeyReport JSON object. A final \"summary\" event contains per-namespace aggregates.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Big key scanner (SSE)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Minimum key size in bytes to report (default 1048576)",
+                        "name": "threshold_bytes",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "stream of SSE events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/keys/hotkeys": {
+            "get": {
+                "description": "Returns the top-N keys by LFU access frequency. Requires maxmemory-policy to be an *-lfu variant.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "Hot key detector (LFU)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of hot keys to return (default 20)",
+                        "name": "top",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_keys.HotKeyReport"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/keys/ttl-report": {
+            "get": {
+                "description": "Returns per-namespace percentage of keys without a TTL set.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "keys"
+                ],
+                "summary": "TTL health report",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_keys.NamespaceTTLReport"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
                                         }
                                     }
                                 }
@@ -684,6 +879,69 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.MemoryReport": {
+            "type": "object",
+            "properties": {
+                "aof_alert": {
+                    "description": "true when last aof rewrite failed",
+                    "type": "boolean"
+                },
+                "aof_enabled": {
+                    "type": "boolean"
+                },
+                "aof_last_rewrite_status": {
+                    "type": "string"
+                },
+                "evicted_keys_per_sec": {
+                    "description": "delta since last call",
+                    "type": "number"
+                },
+                "evicted_keys_total": {
+                    "type": "integer"
+                },
+                "eviction_policy": {
+                    "type": "string"
+                },
+                "frag_alert": {
+                    "description": "true when frag_ratio \u003e 1.5",
+                    "type": "boolean"
+                },
+                "frag_ratio": {
+                    "type": "number"
+                },
+                "max_memory_bytes": {
+                    "type": "integer"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "rdb_alert": {
+                    "description": "true when last bgsave failed",
+                    "type": "boolean"
+                },
+                "rdb_changes_since_save": {
+                    "type": "integer"
+                },
+                "rdb_enabled": {
+                    "type": "boolean"
+                },
+                "rdb_last_bgsave_status": {
+                    "type": "string"
+                },
+                "rdb_last_save_time": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "used_memory_bytes": {
+                    "type": "integer"
+                },
+                "used_memory_human": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.PipelineReport": {
             "type": "object",
             "properties": {
@@ -735,6 +993,49 @@ const docTemplate = `{
                 },
                 "timestamp": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_keys.HotKeyReport": {
+            "type": "object",
+            "properties": {
+                "frequency": {
+                    "description": "OBJECT FREQ value",
+                    "type": "integer"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_keys.NamespaceTTLReport": {
+            "type": "object",
+            "properties": {
+                "namespace": {
+                    "type": "string"
+                },
+                "no_ttl_alert": {
+                    "description": "true when \u003e50% of keys have no TTL",
+                    "type": "boolean"
+                },
+                "no_ttl_keys": {
+                    "type": "integer"
+                },
+                "no_ttl_pct": {
+                    "description": "percentage of keys with no TTL",
+                    "type": "number"
+                },
+                "total_keys": {
+                    "type": "integer"
                 }
             }
         },
