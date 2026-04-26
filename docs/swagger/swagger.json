@@ -1,0 +1,306 @@
+{
+    "schemes": [
+        "http"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Monitoring and operations API for Redis Sentinel clusters on Kubernetes.",
+        "title": "Redis Sentinel Admin API",
+        "contact": {
+            "name": "Internal Infra Team"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/events/stream": {
+            "get": {
+                "description": "Server-Sent Events stream of real-time Sentinel events (+sdown, -sdown, +odown, +failover-*). Connect and keep the connection open to receive events as they happen. Each event line is: `event: sentinel\\ndata: {json}\\n\\n`.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Live Sentinel event stream",
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "description": "Returns 200 OK when the process is alive. Used by Kubernetes liveness probe.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Liveness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz": {
+            "get": {
+                "description": "Returns 200 OK when the service can reach the Redis master via Sentinel. Used by Kubernetes readiness probe.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Readiness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "Master unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/topology": {
+            "get": {
+                "description": "Returns the current Master, Replica, and Sentinel node states including per-node health, connected clients, uptime, and quorum status.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "topology"
+                ],
+                "summary": "Get cluster topology",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_sentinel.TopologySnapshot"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "No sentinel reachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No master or quorum not met",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "github_com_duydinhle_redis-sentinel-admin_internal_api.APIError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse": {
+            "type": "object",
+            "properties": {
+                "data": {},
+                "error": {
+                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse": {
+            "description": "Service health status",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_sentinel.NodeInfo": {
+            "type": "object",
+            "properties": {
+                "addr": {
+                    "type": "string"
+                },
+                "connected_clients": {
+                    "type": "integer"
+                },
+                "is_healthy": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "description": "\"master\" | \"replica\" | \"sentinel\"",
+                    "type": "string"
+                },
+                "uptime_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_sentinel.TopologySnapshot": {
+            "type": "object",
+            "properties": {
+                "captured_at": {
+                    "type": "string"
+                },
+                "master": {
+                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_sentinel.NodeInfo"
+                },
+                "quorum_ok": {
+                    "type": "boolean"
+                },
+                "replicas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_sentinel.NodeInfo"
+                    }
+                },
+                "sentinels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_sentinel.NodeInfo"
+                    }
+                }
+            }
+        }
+    }
+}

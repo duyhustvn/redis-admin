@@ -1,0 +1,117 @@
+version: '3.8'
+
+# Local Redis Sentinel cluster: 1 master, 2 replicas, 3 sentinels.
+#
+# All nodes announce 127.0.0.1 so the Go service running on the host can
+# reach them via the exposed ports even though containers communicate by
+# service name internally.
+#
+# Usage:
+#   docker compose -f integration/docker-compose.yml up -d
+#   # then: go run ./cmd/rsa-server --config config.yaml
+
+networks:
+  redis-net:
+    driver: bridge
+
+services:
+
+  # ── Redis nodes ────────────────────────────────────────────────────────────
+
+  redis-master:
+    image: redis:7-alpine
+    networks: [redis-net]
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+        --port 6379
+        --loglevel notice
+        --announce-ip 127.0.0.1
+        --announce-port 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-replica-1:
+    image: redis:7-alpine
+    networks: [redis-net]
+    ports:
+      - "6380:6379"
+    command: >
+      redis-server
+        --port 6379
+        --replicaof redis-master 6379
+        --loglevel notice
+        --announce-ip 127.0.0.1
+        --announce-port 6380
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-replica-2:
+    image: redis:7-alpine
+    networks: [redis-net]
+    ports:
+      - "6381:6379"
+    command: >
+      redis-server
+        --port 6379
+        --replicaof redis-master 6379
+        --loglevel notice
+        --announce-ip 127.0.0.1
+        --announce-port 6381
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Sentinels ──────────────────────────────────────────────────────────────
+
+  sentinel-1:
+    image: redis:7-alpine
+    networks: [redis-net]
+    ports:
+      - "26379:26379"
+    command: >
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames no\nsentinel announce-ip 127.0.0.1\nsentinel announce-port 26379\nsentinel monitor mymaster redis-master 6379 2\nsentinel down-after-milliseconds mymaster 5000\nsentinel failover-timeout mymaster 60000\nsentinel parallel-syncs mymaster 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
+        condition: service_healthy
+
+  sentinel-2:
+    image: redis:7-alpine
+    networks: [redis-net]
+    ports:
+      - "26380:26379"
+    command: >
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames no\nsentinel announce-ip 127.0.0.1\nsentinel announce-port 26380\nsentinel monitor mymaster redis-master 6379 2\nsentinel down-after-milliseconds mymaster 5000\nsentinel failover-timeout mymaster 60000\nsentinel parallel-syncs mymaster 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+
+  sentinel-3:
+    image: redis:7-alpine
+    networks: [redis-net]
+    ports:
+      - "26381:26379"
+    command: >
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames no\nsentinel announce-ip 127.0.0.1\nsentinel announce-port 26381\nsentinel monitor mymaster redis-master 6379 2\nsentinel down-after-milliseconds mymaster 5000\nsentinel failover-timeout mymaster 60000\nsentinel parallel-syncs mymaster 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    depends_on:
+      redis-master:
+        condition: service_healthy

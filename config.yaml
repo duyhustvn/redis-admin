@@ -1,0 +1,21 @@
+sentinel_addrs:
+  - localhost:26379
+  - localhost:26380
+  - localhost:26381
+
+master_name: mymaster
+
+# sentinel_password: ""
+# redis_password: ""
+
+k8s_namespace: default
+
+log_level: info
+
+http_port: 8083
+metrics_port: 9090
+
+poll_interval: 5s
+slowlog_interval: 10s
+
+# webhook_url: "https://hooks.slack.com/services/..."
