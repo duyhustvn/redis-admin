@@ -67,16 +67,16 @@ Status legend: ✅ Done | 🚧 In Progress | ⬜ Not Started
 
 | # | Feature | Package | Endpoint | Status |
 |---|---|---|---|---|
-| 4.1 | Replication offset trend tracker (ring buffer per replica) | `internal/replication/tracker.go` | `GET /api/v1/replication/lag` | ⬜ |
-| 4.2 | Full resync counter + `repl-backlog-size` advisor | `internal/replication/resync.go` | `GET /api/v1/replication/resync-stats` | ⬜ |
-| 4.3 | Replica promotion readiness (suggest best candidate pre-failover) | `internal/replication/tracker.go` | included in failover dry-run | ⬜ |
-| 4.4 | Cross-node config diff (`CONFIG GET *` across all nodes) | `internal/operations/configdiff.go` | `GET /api/v1/config/diff` | ⬜ |
-| 4.5 | Config change audit log (ring buffer + optional file sink) | `internal/operations/audit.go` | `GET /api/v1/config/audit` | ⬜ |
-| 4.6 | Config set with audit (requires `confirm: true`) | `internal/operations/audit.go` | `POST /api/v1/config/set` | ⬜ |
-| 4.7 | Graceful failover: lag-check → replica-select → drain → promote → verify → rollback | `internal/operations/failover.go` | `POST /api/v1/ops/failover` | ⬜ |
-| 4.8 | Webhook notification on failover events (Slack / generic POST) | `internal/operations/notify.go` | config-driven | ⬜ |
-| 4.9 | Stale distributed lock detector (by key pattern + TTL check) | `internal/diagnostics/slowlog.go` | `GET /api/v1/diagnostics/slowlog` | ⬜ |
-| 4.10 | Prometheus metrics exporter | `internal/metrics/exporter.go` | `GET /metrics` | ⬜ |
+| 4.1 | Replication offset trend tracker (ring buffer per replica) | `internal/replication/tracker.go` | `GET /api/v1/replication/lag` | ✅ |
+| 4.2 | Full resync counter + `repl-backlog-size` advisor | `internal/replication/resync.go` | `GET /api/v1/replication/resync-stats` | ✅ |
+| 4.3 | Replica promotion readiness (suggest best candidate pre-failover) | `internal/replication/tracker.go` | included in failover dry-run | ✅ |
+| 4.4 | Cross-node config diff (`CONFIG GET *` across all nodes) | `internal/operations/configdiff.go` | `GET /api/v1/config/diff` | ✅ |
+| 4.5 | Config change audit log (ring buffer + optional file sink) | `internal/operations/audit.go` | `GET /api/v1/config/audit` | ✅ |
+| 4.6 | Config set with audit (requires `confirm: true`) | `internal/operations/audit.go` | `POST /api/v1/config/set` | ✅ |
+| 4.7 | Graceful failover: lag-check → replica-select → drain → promote → verify → rollback | `internal/operations/failover.go` | `POST /api/v1/ops/failover` | ✅ |
+| 4.8 | Webhook notification on failover events (Slack / generic POST) | `internal/operations/notify.go` | config-driven | ✅ |
+| 4.9 | Stale distributed lock detector (by key pattern + TTL check) | `internal/diagnostics/locks.go` | `GET /api/v1/diagnostics/locks` | ✅ |
+| 4.10 | Prometheus metrics exporter | `internal/metrics/exporter.go` | `GET /metrics` | ✅ |
 
 **Completion criteria**: `POST /api/v1/ops/failover` with `dry_run: true` shows pre-flight checks. Config diff works. All mutation endpoints require `confirm: true`. Swagger UI shows request body schema for all POST endpoints.
 

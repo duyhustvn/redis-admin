@@ -13,6 +13,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,6 +27,9 @@ import (
 	"github.com/duydinhle/redis-sentinel-admin/internal/diagnostics"
 	"github.com/duydinhle/redis-sentinel-admin/internal/k8s"
 	"github.com/duydinhle/redis-sentinel-admin/internal/keys"
+	"github.com/duydinhle/redis-sentinel-admin/internal/metrics"
+	"github.com/duydinhle/redis-sentinel-admin/internal/operations"
+	"github.com/duydinhle/redis-sentinel-admin/internal/replication"
 	"github.com/duydinhle/redis-sentinel-admin/internal/sentinel"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -81,9 +85,13 @@ func main() {
 	}
 
 	// ── Domain services ───────────────────────────────────────────────────────
-	connSvc := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
-	diagSvc := diagnostics.New(cfg, sentinelSvc, logger)
-	keysSvc := keys.New(cfg, sentinelSvc, logger)
+	connSvc  := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
+	diagSvc  := diagnostics.New(cfg, sentinelSvc, logger)
+	keysSvc  := keys.New(cfg, sentinelSvc, logger)
+	replSvc  := replication.New(cfg, sentinelSvc, logger)
+	opsSvc   := operations.New(cfg, sentinelSvc, logger)
+	metricsExp := metrics.New(cfg, sentinelSvc, replSvc, logger)
+	metricsExp.Start(ctx, cfg.PollInterval)
 
 	// ── HTTP server ───────────────────────────────────────────────────────────
 	srv := api.New(cfg, logger)
@@ -103,8 +111,27 @@ func main() {
 		GetHotkeys:    handlers.GetHotkeys(keysSvc),
 		GetTTLReport:  handlers.GetTTLReport(keysSvc),
 
+		GetReplicationLag: handlers.GetReplicationLag(replSvc),
+		GetResyncStats:    handlers.GetResyncStats(replSvc),
+		GetConfigDiff:     handlers.GetConfigDiff(opsSvc),
+		GetConfigAudit:    handlers.GetConfigAudit(opsSvc),
+		SetConfig:         handlers.SetConfig(opsSvc),
+		TriggerFailover:   handlers.TriggerFailover(opsSvc),
+		GetStaleLocks:     handlers.GetStaleLocks(diagSvc),
+
 		Logger: logger,
 	})
+
+	// ── Prometheus metrics server (separate port) ─────────────────────────────
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", metricsExp.Handler())
+		addr := fmt.Sprintf(":%d", cfg.MetricsPort)
+		logger.Info("metrics server listening", zap.String("addr", addr))
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			logger.Warn("metrics server stopped", zap.Error(err))
+		}
+	}()
 
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- srv.Start() }()

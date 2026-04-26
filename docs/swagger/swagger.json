@@ -14,6 +14,176 @@
     "host": "localhost:8080",
     "basePath": "/api/v1",
     "paths": {
+        "/config/audit": {
+            "get": {
+                "description": "Returns the in-memory ring buffer of the last 500 CONFIG SET operations, including old value, new value, node address, and remote IP.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Config change audit log",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.AuditEntry"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/config/diff": {
+            "get": {
+                "description": "Runs CONFIG GET * on every node and returns keys whose values differ across nodes. Only drifted keys are included in the response.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Cross-node config diff",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.ConfigDiff"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Node unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/config/set": {
+            "post": {
+                "description": "Applies CONFIG SET on a specific node and records the change in the audit log. Requires confirm:true in the request body.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Set a Redis config value",
+                "parameters": [
+                    {
+                        "description": "CONFIG SET parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ConfigSetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "confirm not set or invalid request",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Node unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/connections": {
             "get": {
                 "description": "Runs CLIENT LIST on every Redis node, groups connections by source IP, and enriches each entry with Kubernetes Pod metadata (name, namespace, deployment) where available. Also reports which connected pods are CPU-throttled.",
@@ -183,6 +353,75 @@
                                     "properties": {
                                         "error": {
                                             "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/diagnostics/locks": {
+            "get": {
+                "description": "Scans keys matching a pattern and returns those with no TTL or with a TTL exceeding the stale threshold. Useful for detecting leaked distributed locks.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "diagnostics"
+                ],
+                "summary": "Stale distributed lock detector",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "lock:*",
+                        "description": "Key pattern to scan (default lock:*)",
+                        "name": "pattern",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 300,
+                        "description": "TTL in seconds above which a lock is considered stale; 0 = flag only keys with no TTL (default 300)",
+                        "name": "stale_threshold",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.LockReport"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
                                         }
                                     }
                                 }
@@ -608,6 +847,88 @@
                 }
             }
         },
+        "/ops/failover": {
+            "post": {
+                "description": "Performs a lag-check, selects the best replica, then triggers SENTINEL FAILOVER. Use dry_run:true to preview without executing. Requires confirm:true when dry_run is false.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operations"
+                ],
+                "summary": "Graceful failover",
+                "parameters": [
+                    {
+                        "description": "Failover options",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FailoverRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.FailoverResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "confirm not set",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No eligible replica or quorum not met",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/readyz": {
             "get": {
                 "description": "Returns 200 OK when the service can reach the Redis master via Sentinel. Used by Kubernetes readiness probe.",
@@ -667,6 +988,148 @@
                                     "properties": {
                                         "error": {
                                             "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/replication/lag": {
+            "get": {
+                "description": "Returns the replication offset lag in bytes for every replica, plus a ring-buffer trend of recent samples and a promotion score (0–100, higher = better failover candidate).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "replication"
+                ],
+                "summary": "Replication lag per replica",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_replication.ReplicaLag"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Node unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No master",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/replication/resync-stats": {
+            "get": {
+                "description": "Returns full-resync counters and backlog utilisation per node. Raises an alert when the backlog exceeds 90% capacity and includes a sizing advisory.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "replication"
+                ],
+                "summary": "Replication backlog and resync stats",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_replication.ResyncReport"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Node unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No master",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
                                         }
                                     }
                                 }
@@ -784,6 +1247,42 @@
                 }
             }
         },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ConfigSetRequest": {
+            "description": "Redis CONFIG SET parameters",
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "key": {
+                    "type": "string",
+                    "example": "maxmemory-policy"
+                },
+                "node_addr": {
+                    "type": "string",
+                    "example": "10.0.0.2:6379"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "allkeys-lfu"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FailoverRequest": {
+            "description": "Failover trigger options",
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
         "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse": {
             "description": "Service health status",
             "type": "object",
@@ -873,6 +1372,28 @@
                 },
                 "write_pct": {
                     "type": "number"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.LockReport": {
+            "type": "object",
+            "properties": {
+                "is_stale": {
+                    "description": "true: no TTL or TTL \u003e stale threshold",
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "ttl_seconds": {
+                    "description": "-1 = no TTL set",
+                    "type": "integer"
                 }
             }
         },
@@ -1032,6 +1553,153 @@
                     "type": "number"
                 },
                 "total_keys": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_operations.AuditEntry": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "new_value": {
+                    "type": "string"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "old_value": {
+                    "type": "string"
+                },
+                "remote_ip": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_operations.ConfigDiff": {
+            "type": "object",
+            "properties": {
+                "is_drift": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.NodeConfigValue"
+                    }
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_operations.FailoverResult": {
+            "type": "object",
+            "properties": {
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "elapsed_ms": {
+                    "type": "integer"
+                },
+                "new_master": {
+                    "type": "string"
+                },
+                "old_master": {
+                    "type": "string"
+                },
+                "pre_checks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "selected_replica": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_operations.NodeConfigValue": {
+            "type": "object",
+            "properties": {
+                "node_addr": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_replication.LagSample": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "lag_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_replication.ReplicaLag": {
+            "type": "object",
+            "properties": {
+                "is_caught_up": {
+                    "description": "lag \u003c 1 MiB",
+                    "type": "boolean"
+                },
+                "lag_bytes": {
+                    "type": "integer"
+                },
+                "lag_trend": {
+                    "description": "up to 10 most recent samples",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_replication.LagSample"
+                    }
+                },
+                "master_offset": {
+                    "type": "integer"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "promotion_score": {
+                    "description": "0–100, higher = better failover candidate",
+                    "type": "number"
+                },
+                "replica_offset": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_replication.ResyncReport": {
+            "type": "object",
+            "properties": {
+                "advisory": {
+                    "type": "string"
+                },
+                "backlog_active_size_bytes": {
+                    "type": "integer"
+                },
+                "backlog_alert": {
+                    "description": "active \u003e 90% of backlog size",
+                    "type": "boolean"
+                },
+                "backlog_size_bytes": {
+                    "type": "integer"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "total_resyncs": {
                     "type": "integer"
                 }
             }

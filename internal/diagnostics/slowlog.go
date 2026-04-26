@@ -37,6 +37,7 @@ type Service interface {
 	GetSlowlog(ctx context.Context, limit int) ([]SlowlogEntry, error)
 	GetPipelineStats(ctx context.Context) ([]PipelineReport, error)
 	GetMemory(ctx context.Context) ([]MemoryReport, error)
+	GetStaleLocks(ctx context.Context, pattern string, staleThresholdSec int64) ([]LockReport, error)
 }
 
 // DiagnosticsService implements Service.

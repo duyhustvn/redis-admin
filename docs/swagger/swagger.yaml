@@ -13,6 +13,32 @@ definitions:
       error:
         $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError'
     type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ConfigSetRequest:
+    description: Redis CONFIG SET parameters
+    properties:
+      confirm:
+        example: true
+        type: boolean
+      key:
+        example: maxmemory-policy
+        type: string
+      node_addr:
+        example: 10.0.0.2:6379
+        type: string
+      value:
+        example: allkeys-lfu
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FailoverRequest:
+    description: Failover trigger options
+    properties:
+      confirm:
+        example: true
+        type: boolean
+      dry_run:
+        example: false
+        type: boolean
+    type: object
   github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse:
     description: Service health status
     properties:
@@ -73,6 +99,21 @@ definitions:
         type: integer
       write_pct:
         type: number
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.LockReport:
+    properties:
+      is_stale:
+        description: 'true: no TTL or TTL > stale threshold'
+        type: boolean
+      key:
+        type: string
+      node_addr:
+        type: string
+      size_bytes:
+        type: integer
+      ttl_seconds:
+        description: -1 = no TTL set
+        type: integer
     type: object
   github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.MemoryReport:
     properties:
@@ -183,6 +224,103 @@ definitions:
       total_keys:
         type: integer
     type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_operations.AuditEntry:
+    properties:
+      key:
+        type: string
+      new_value:
+        type: string
+      node_addr:
+        type: string
+      old_value:
+        type: string
+      remote_ip:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_operations.ConfigDiff:
+    properties:
+      is_drift:
+        type: boolean
+      key:
+        type: string
+      values:
+        items:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.NodeConfigValue'
+        type: array
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_operations.FailoverResult:
+    properties:
+      dry_run:
+        type: boolean
+      elapsed_ms:
+        type: integer
+      new_master:
+        type: string
+      old_master:
+        type: string
+      pre_checks:
+        items:
+          type: string
+        type: array
+      selected_replica:
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_operations.NodeConfigValue:
+    properties:
+      node_addr:
+        type: string
+      value:
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_replication.LagSample:
+    properties:
+      at:
+        type: string
+      lag_bytes:
+        type: integer
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_replication.ReplicaLag:
+    properties:
+      is_caught_up:
+        description: lag < 1 MiB
+        type: boolean
+      lag_bytes:
+        type: integer
+      lag_trend:
+        description: up to 10 most recent samples
+        items:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_replication.LagSample'
+        type: array
+      master_offset:
+        type: integer
+      node_addr:
+        type: string
+      promotion_score:
+        description: 0–100, higher = better failover candidate
+        type: number
+      replica_offset:
+        type: integer
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_replication.ResyncReport:
+    properties:
+      advisory:
+        type: string
+      backlog_active_size_bytes:
+        type: integer
+      backlog_alert:
+        description: active > 90% of backlog size
+        type: boolean
+      backlog_size_bytes:
+        type: integer
+      node_addr:
+        type: string
+      role:
+        type: string
+      total_resyncs:
+        type: integer
+    type: object
   github_com_duydinhle_redis-sentinel-admin_internal_sentinel.NodeInfo:
     properties:
       addr:
@@ -222,6 +360,103 @@ info:
   title: Redis Sentinel Admin API
   version: "1.0"
 paths:
+  /config/audit:
+    get:
+      description: Returns the in-memory ring buffer of the last 500 CONFIG SET operations,
+        including old value, new value, node address, and remote IP.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.AuditEntry'
+                  type: array
+              type: object
+      summary: Config change audit log
+      tags:
+      - config
+  /config/diff:
+    get:
+      description: Runs CONFIG GET * on every node and returns keys whose values differ
+        across nodes. Only drifted keys are included in the response.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.ConfigDiff'
+                  type: array
+              type: object
+        "502":
+          description: Node unreachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Cross-node config diff
+      tags:
+      - config
+  /config/set:
+    post:
+      consumes:
+      - application/json
+      description: Applies CONFIG SET on a specific node and records the change in
+        the audit log. Requires confirm:true in the request body.
+      parameters:
+      - description: CONFIG SET parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ConfigSetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: confirm not set or invalid request
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "502":
+          description: Node unreachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Set a Redis config value
+      tags:
+      - config
   /connections:
     get:
       description: Runs CLIENT LIST on every Redis node, groups connections by source
@@ -320,6 +555,49 @@ paths:
       summary: Read/write distribution per replica
       tags:
       - connections
+  /diagnostics/locks:
+    get:
+      description: Scans keys matching a pattern and returns those with no TTL or
+        with a TTL exceeding the stale threshold. Useful for detecting leaked distributed
+        locks.
+      parameters:
+      - default: lock:*
+        description: Key pattern to scan (default lock:*)
+        in: query
+        name: pattern
+        type: string
+      - default: 300
+        description: TTL in seconds above which a lock is considered stale; 0 = flag
+          only keys with no TTL (default 300)
+        in: query
+        name: stale_threshold
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.LockReport'
+                  type: array
+              type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Stale distributed lock detector
+      tags:
+      - diagnostics
   /diagnostics/memory:
     get:
       description: Returns memory fragmentation, eviction rate, and persistence health
@@ -563,6 +841,53 @@ paths:
       summary: TTL health report
       tags:
       - keys
+  /ops/failover:
+    post:
+      consumes:
+      - application/json
+      description: Performs a lag-check, selects the best replica, then triggers SENTINEL
+        FAILOVER. Use dry_run:true to preview without executing. Requires confirm:true
+        when dry_run is false.
+      parameters:
+      - description: Failover options
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FailoverRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_operations.FailoverResult'
+              type: object
+        "400":
+          description: confirm not set
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "503":
+          description: No eligible replica or quorum not met
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Graceful failover
+      tags:
+      - operations
   /readyz:
     get:
       description: Returns 200 OK when the service can reach the Redis master via
@@ -600,6 +925,86 @@ paths:
       summary: Readiness probe
       tags:
       - health
+  /replication/lag:
+    get:
+      description: Returns the replication offset lag in bytes for every replica,
+        plus a ring-buffer trend of recent samples and a promotion score (0–100, higher
+        = better failover candidate).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_replication.ReplicaLag'
+                  type: array
+              type: object
+        "502":
+          description: Node unreachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "503":
+          description: No master
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Replication lag per replica
+      tags:
+      - replication
+  /replication/resync-stats:
+    get:
+      description: Returns full-resync counters and backlog utilisation per node.
+        Raises an alert when the backlog exceeds 90% capacity and includes a sizing
+        advisory.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_replication.ResyncReport'
+                  type: array
+              type: object
+        "502":
+          description: Node unreachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "503":
+          description: No master
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Replication backlog and resync stats
+      tags:
+      - replication
   /topology:
     get:
       description: Returns the current Master, Replica, and Sentinel node states including

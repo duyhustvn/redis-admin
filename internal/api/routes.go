@@ -23,10 +23,19 @@ type Deps struct {
 	GetPipeline     echo.HandlerFunc
 
 	// Phase 3
-	GetMemory    echo.HandlerFunc
+	GetMemory     echo.HandlerFunc
 	StreamBigkeys echo.HandlerFunc
-	GetHotkeys   echo.HandlerFunc
-	GetTTLReport echo.HandlerFunc
+	GetHotkeys    echo.HandlerFunc
+	GetTTLReport  echo.HandlerFunc
+
+	// Phase 4
+	GetReplicationLag  echo.HandlerFunc
+	GetResyncStats     echo.HandlerFunc
+	GetConfigDiff      echo.HandlerFunc
+	GetConfigAudit     echo.HandlerFunc
+	SetConfig          echo.HandlerFunc
+	TriggerFailover    echo.HandlerFunc
+	GetStaleLocks      echo.HandlerFunc
 
 	Logger *zap.Logger
 }
@@ -70,5 +79,28 @@ func RegisterRoutes(e *echo.Echo, deps Deps) {
 	}
 	if deps.GetTTLReport != nil {
 		v1.GET("/keys/ttl-report", deps.GetTTLReport)
+	}
+
+	// Phase 4
+	if deps.GetReplicationLag != nil {
+		v1.GET("/replication/lag", deps.GetReplicationLag)
+	}
+	if deps.GetResyncStats != nil {
+		v1.GET("/replication/resync-stats", deps.GetResyncStats)
+	}
+	if deps.GetConfigDiff != nil {
+		v1.GET("/config/diff", deps.GetConfigDiff)
+	}
+	if deps.GetConfigAudit != nil {
+		v1.GET("/config/audit", deps.GetConfigAudit)
+	}
+	if deps.SetConfig != nil {
+		v1.POST("/config/set", deps.SetConfig)
+	}
+	if deps.TriggerFailover != nil {
+		v1.POST("/ops/failover", deps.TriggerFailover)
+	}
+	if deps.GetStaleLocks != nil {
+		v1.GET("/diagnostics/locks", deps.GetStaleLocks)
 	}
 }
