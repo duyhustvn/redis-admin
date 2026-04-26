@@ -88,26 +88,27 @@ services:
       retries: 10
 
   # ── Sentinels ──────────────────────────────────────────────────────────────
+  #
+  # Sentinels run with network_mode: host so that "127.0.0.1" means the same
+  # thing to every sentinel — the host loopback — allowing them to discover
+  # each other via their announced addresses and reach the Redis nodes through
+  # the published host ports (6379/6380/6381).  Each sentinel binds a distinct
+  # host port (26379/26380/26381) and announces that port back to its peers.
 
   sentinel-1:
     image: redis:7-alpine
-    networks: [redis-net]
-    ports:
-      - "26379:26379"
+    network_mode: host
     command:
       - sh
       - -c
       - |
         printf "port 26379
-        sentinel resolve-hostnames yes
-        sentinel announce-hostnames no
         sentinel announce-ip 127.0.0.1
         sentinel announce-port 26379
-        sentinel monitor mymaster redis-master 6379 2
+        sentinel monitor mymaster 127.0.0.1 6379 2
         sentinel down-after-milliseconds mymaster 5000
         sentinel failover-timeout mymaster 60000
-        sentinel parallel-syncs mymaster 1" > /tmp/sentinel.conf && 
-        redis-sentinel /tmp/sentinel.conf
+        sentinel parallel-syncs mymaster 1" > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf
     depends_on:
       redis-master:
         condition: service_healthy
@@ -118,46 +119,44 @@ services:
 
   sentinel-2:
     image: redis:7-alpine
-    networks: [redis-net]
-    ports:
-      - "26380:26379"
+    network_mode: host
     command:
       - sh
       - -c
       - |
-        printf "port 26379
-        sentinel resolve-hostnames yes
-        sentinel announce-hostnames no
+        printf "port 26380
         sentinel announce-ip 127.0.0.1
         sentinel announce-port 26380
-        sentinel monitor mymaster redis-master 6379 2
+        sentinel monitor mymaster 127.0.0.1 6379 2
         sentinel down-after-milliseconds mymaster 5000
         sentinel failover-timeout mymaster 60000
-        sentinel parallel-syncs mymaster 1" > /tmp/sentinel.conf && 
-        redis-sentinel /tmp/sentinel.conf
+        sentinel parallel-syncs mymaster 1" > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf
     depends_on:
       redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
         condition: service_healthy
 
   sentinel-3:
     image: redis:7-alpine
-    networks: [redis-net]
-    ports:
-      - "26381:26379"
+    network_mode: host
     command:
       - sh
       - -c
       - |
-        printf "port 26379
-        sentinel resolve-hostnames yes
-        sentinel announce-hostnames no
+        printf "port 26381
         sentinel announce-ip 127.0.0.1
         sentinel announce-port 26381
-        sentinel monitor mymaster redis-master 6379 2
+        sentinel monitor mymaster 127.0.0.1 6379 2
         sentinel down-after-milliseconds mymaster 5000
         sentinel failover-timeout mymaster 60000
-        sentinel parallel-syncs mymaster 1" > /tmp/sentinel.conf && 
-        redis-sentinel /tmp/sentinel.conf
+        sentinel parallel-syncs mymaster 1" > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf
     depends_on:
       redis-master:
+        condition: service_healthy
+      redis-replica-1:
+        condition: service_healthy
+      redis-replica-2:
         condition: service_healthy
