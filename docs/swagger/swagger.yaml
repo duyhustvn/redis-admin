@@ -13,6 +13,23 @@ definitions:
       error:
         $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError'
     type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ChaosFailoverRequest:
+    description: Chaos failover trigger parameters
+    properties:
+      confirm:
+        example: true
+        type: boolean
+      mode:
+        description: '"sentinel"|"pod"'
+        example: sentinel
+        type: string
+      pod_name:
+        example: redis-master-0
+        type: string
+      pod_namespace:
+        example: redis
+        type: string
+    type: object
   github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ConfigSetRequest:
     description: Redis CONFIG SET parameters
     properties:
@@ -39,6 +56,16 @@ definitions:
         example: false
         type: boolean
     type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FlushRequest:
+    description: Pattern-scoped cluster flush parameters
+    properties:
+      confirm:
+        example: true
+        type: boolean
+      pattern:
+        example: test:*
+        type: string
+    type: object
   github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse:
     description: Service health status
     properties:
@@ -46,6 +73,61 @@ definitions:
         example: ok
         type: string
       timestamp:
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_api_dto.SeedRequest:
+    description: Dummy data seed parameters
+    properties:
+      confirm:
+        example: true
+        type: boolean
+      key_count:
+        example: 1000
+        type: integer
+      key_prefix:
+        example: 'test:'
+        type: string
+      key_type:
+        description: string|hash|list|set|zset
+        example: string
+        type: string
+      ttl_sec:
+        description: 0 = no expiry
+        example: 3600
+        type: integer
+      value_size:
+        example: 256
+        type: integer
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_chaos.ChaosFailoverResult:
+    properties:
+      elapsed_ms:
+        type: integer
+      mode:
+        description: '"sentinel" | "pod"'
+        type: string
+      target:
+        description: sentinel addr or pod name
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_chaos.FlushResult:
+    properties:
+      elapsed_ms:
+        type: integer
+      keys_deleted:
+        type: integer
+      pattern:
+        type: string
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_chaos.SeedResult:
+    properties:
+      elapsed_ms:
+        type: integer
+      key_type:
+        type: string
+      keys_created:
+        type: integer
+      prefix:
         type: string
     type: object
   github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo:
@@ -841,6 +923,145 @@ paths:
       summary: TTL health report
       tags:
       - keys
+  /ops/chaos/failover:
+    post:
+      consumes:
+      - application/json
+      description: Triggers a failover without pre-checks. mode=sentinel sends SENTINEL
+        FAILOVER directly; mode=pod deletes the named Redis pod via K8s to force failover.
+        Requires confirm:true.
+      parameters:
+      - description: Chaos failover parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ChaosFailoverRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_chaos.ChaosFailoverResult'
+              type: object
+        "400":
+          description: confirm not set or invalid request
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "503":
+          description: No reachable sentinel or K8s unavailable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Chaos failover trigger
+      tags:
+      - chaos
+  /ops/chaos/flush:
+    post:
+      consumes:
+      - application/json
+      description: Deletes all keys matching the given pattern via SCAN+DEL on the
+        master. Never calls FLUSHALL. Requires confirm:true.
+      parameters:
+      - description: Flush parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FlushRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_chaos.FlushResult'
+              type: object
+        "400":
+          description: confirm not set
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "502":
+          description: Master unreachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Pattern-scoped cluster flush
+      tags:
+      - chaos
+  /ops/chaos/seed:
+    post:
+      consumes:
+      - application/json
+      description: Generates configurable dummy keys on the master node. Supports
+        string, hash, list, set, and zset types. Requires confirm:true.
+      parameters:
+      - description: Seed parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.SeedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_chaos.SeedResult'
+              type: object
+        "400":
+          description: confirm not set or invalid request
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "502":
+          description: Master unreachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+      summary: Seed dummy data
+      tags:
+      - chaos
   /ops/failover:
     post:
       consumes:

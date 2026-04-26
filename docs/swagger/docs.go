@@ -850,6 +850,252 @@ const docTemplate = `{
                 }
             }
         },
+        "/ops/chaos/failover": {
+            "post": {
+                "description": "Triggers a failover without pre-checks. mode=sentinel sends SENTINEL FAILOVER directly; mode=pod deletes the named Redis pod via K8s to force failover. Requires confirm:true.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaos"
+                ],
+                "summary": "Chaos failover trigger",
+                "parameters": [
+                    {
+                        "description": "Chaos failover parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ChaosFailoverRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_chaos.ChaosFailoverResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "confirm not set or invalid request",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No reachable sentinel or K8s unavailable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/ops/chaos/flush": {
+            "post": {
+                "description": "Deletes all keys matching the given pattern via SCAN+DEL on the master. Never calls FLUSHALL. Requires confirm:true.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaos"
+                ],
+                "summary": "Pattern-scoped cluster flush",
+                "parameters": [
+                    {
+                        "description": "Flush parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FlushRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_chaos.FlushResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "confirm not set",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Master unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/ops/chaos/seed": {
+            "post": {
+                "description": "Generates configurable dummy keys on the master node. Supports string, hash, list, set, and zset types. Requires confirm:true.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chaos"
+                ],
+                "summary": "Seed dummy data",
+                "parameters": [
+                    {
+                        "description": "Seed parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api_dto.SeedRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_chaos.SeedResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "confirm not set or invalid request",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "Master unreachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/ops/failover": {
             "post": {
                 "description": "Performs a lag-check, selects the best replica, then triggers SENTINEL FAILOVER. Use dry_run:true to preview without executing. Requires confirm:true when dry_run is false.",
@@ -1250,6 +1496,29 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ChaosFailoverRequest": {
+            "description": "Chaos failover trigger parameters",
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "mode": {
+                    "description": "\"sentinel\"|\"pod\"",
+                    "type": "string",
+                    "example": "sentinel"
+                },
+                "pod_name": {
+                    "type": "string",
+                    "example": "redis-master-0"
+                },
+                "pod_namespace": {
+                    "type": "string",
+                    "example": "redis"
+                }
+            }
+        },
         "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.ConfigSetRequest": {
             "description": "Redis CONFIG SET parameters",
             "type": "object",
@@ -1286,6 +1555,20 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.FlushRequest": {
+            "description": "Pattern-scoped cluster flush parameters",
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "pattern": {
+                    "type": "string",
+                    "example": "test:*"
+                }
+            }
+        },
         "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.HealthResponse": {
             "description": "Service health status",
             "type": "object",
@@ -1295,6 +1578,85 @@ const docTemplate = `{
                     "example": "ok"
                 },
                 "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_api_dto.SeedRequest": {
+            "description": "Dummy data seed parameters",
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "key_count": {
+                    "type": "integer",
+                    "example": 1000
+                },
+                "key_prefix": {
+                    "type": "string",
+                    "example": "test:"
+                },
+                "key_type": {
+                    "description": "string|hash|list|set|zset",
+                    "type": "string",
+                    "example": "string"
+                },
+                "ttl_sec": {
+                    "description": "0 = no expiry",
+                    "type": "integer",
+                    "example": 3600
+                },
+                "value_size": {
+                    "type": "integer",
+                    "example": 256
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_chaos.ChaosFailoverResult": {
+            "type": "object",
+            "properties": {
+                "elapsed_ms": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "description": "\"sentinel\" | \"pod\"",
+                    "type": "string"
+                },
+                "target": {
+                    "description": "sentinel addr or pod name",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_chaos.FlushResult": {
+            "type": "object",
+            "properties": {
+                "elapsed_ms": {
+                    "type": "integer"
+                },
+                "keys_deleted": {
+                    "type": "integer"
+                },
+                "pattern": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_chaos.SeedResult": {
+            "type": "object",
+            "properties": {
+                "elapsed_ms": {
+                    "type": "integer"
+                },
+                "key_type": {
+                    "type": "string"
+                },
+                "keys_created": {
+                    "type": "integer"
+                },
+                "prefix": {
                     "type": "string"
                 }
             }

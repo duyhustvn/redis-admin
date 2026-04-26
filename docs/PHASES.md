@@ -87,11 +87,11 @@ Status legend: ✅ Done | 🚧 In Progress | ⬜ Not Started
 
 | # | Feature | Package | Endpoint | Status |
 |---|---|---|---|---|
-| 5.1 | Dummy data seeder (configurable key count / type / prefix / size) | `internal/chaos/seeder.go` | `POST /api/v1/ops/chaos/seed` | ⬜ |
-| 5.2 | Safe cluster flusher (requires `confirm: true`) | `internal/chaos/seeder.go` | `POST /api/v1/ops/chaos/flush` | ⬜ |
-| 5.3 | Chaos failover trigger (`SENTINEL FAILOVER` or pod delete) | `internal/chaos/trigger.go` | `POST /api/v1/ops/chaos/failover` | ⬜ |
-| 5.4 | Integration test suite (docker-compose: 1 master + 2 replicas + 3 sentinels) | `integration/` | — | ⬜ |
-| 5.5 | Final `swag init` pass — verify all endpoints documented, no missing annotations | `docs/swagger/` | `GET /swagger/*` | ⬜ |
+| 5.1 | Dummy data seeder (configurable key count / type / prefix / size) | `internal/chaos/seeder.go` | `POST /api/v1/ops/chaos/seed` | ✅ |
+| 5.2 | Safe cluster flusher (requires `confirm: true`) | `internal/chaos/seeder.go` | `POST /api/v1/ops/chaos/flush` | ✅ |
+| 5.3 | Chaos failover trigger (`SENTINEL FAILOVER` or pod delete) | `internal/chaos/trigger.go` | `POST /api/v1/ops/chaos/failover` | ✅ |
+| 5.4 | Integration test suite (docker-compose: 1 master + 2 replicas + 3 sentinels) | `integration/sentinel_test.go` | — | ✅ |
+| 5.5 | Final `swag init` pass — verify all endpoints documented, no missing annotations | `docs/swagger/` | `GET /swagger/*` | ✅ |
 
 **Completion criteria**: All endpoints appear in Swagger UI with correct request/response schemas. Integration tests pass against local cluster.
 

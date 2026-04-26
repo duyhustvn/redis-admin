@@ -29,13 +29,18 @@ type Deps struct {
 	GetTTLReport  echo.HandlerFunc
 
 	// Phase 4
-	GetReplicationLag  echo.HandlerFunc
-	GetResyncStats     echo.HandlerFunc
-	GetConfigDiff      echo.HandlerFunc
-	GetConfigAudit     echo.HandlerFunc
-	SetConfig          echo.HandlerFunc
-	TriggerFailover    echo.HandlerFunc
-	GetStaleLocks      echo.HandlerFunc
+	GetReplicationLag echo.HandlerFunc
+	GetResyncStats    echo.HandlerFunc
+	GetConfigDiff     echo.HandlerFunc
+	GetConfigAudit    echo.HandlerFunc
+	SetConfig         echo.HandlerFunc
+	TriggerFailover   echo.HandlerFunc
+	GetStaleLocks     echo.HandlerFunc
+
+	// Phase 5
+	SeedData      echo.HandlerFunc
+	FlushData     echo.HandlerFunc
+	ChaosFailover echo.HandlerFunc
 
 	Logger *zap.Logger
 }
@@ -102,5 +107,16 @@ func RegisterRoutes(e *echo.Echo, deps Deps) {
 	}
 	if deps.GetStaleLocks != nil {
 		v1.GET("/diagnostics/locks", deps.GetStaleLocks)
+	}
+
+	// Phase 5
+	if deps.SeedData != nil {
+		v1.POST("/ops/chaos/seed", deps.SeedData)
+	}
+	if deps.FlushData != nil {
+		v1.POST("/ops/chaos/flush", deps.FlushData)
+	}
+	if deps.ChaosFailover != nil {
+		v1.POST("/ops/chaos/failover", deps.ChaosFailover)
 	}
 }

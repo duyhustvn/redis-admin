@@ -23,6 +23,7 @@ import (
 	"github.com/duydinhle/redis-sentinel-admin/internal/api"
 	"github.com/duydinhle/redis-sentinel-admin/internal/api/handlers"
 	"github.com/duydinhle/redis-sentinel-admin/internal/config"
+	"github.com/duydinhle/redis-sentinel-admin/internal/chaos"
 	"github.com/duydinhle/redis-sentinel-admin/internal/connection"
 	"github.com/duydinhle/redis-sentinel-admin/internal/diagnostics"
 	"github.com/duydinhle/redis-sentinel-admin/internal/k8s"
@@ -85,11 +86,12 @@ func main() {
 	}
 
 	// ── Domain services ───────────────────────────────────────────────────────
-	connSvc  := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
-	diagSvc  := diagnostics.New(cfg, sentinelSvc, logger)
-	keysSvc  := keys.New(cfg, sentinelSvc, logger)
-	replSvc  := replication.New(cfg, sentinelSvc, logger)
-	opsSvc   := operations.New(cfg, sentinelSvc, logger)
+	connSvc    := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
+	diagSvc    := diagnostics.New(cfg, sentinelSvc, logger)
+	keysSvc    := keys.New(cfg, sentinelSvc, logger)
+	replSvc    := replication.New(cfg, sentinelSvc, logger)
+	opsSvc     := operations.New(cfg, sentinelSvc, logger)
+	chaosSvc   := chaos.New(cfg, sentinelSvc, k8sClient, logger)
 	metricsExp := metrics.New(cfg, sentinelSvc, replSvc, logger)
 	metricsExp.Start(ctx, cfg.PollInterval)
 
@@ -116,8 +118,12 @@ func main() {
 		GetConfigDiff:     handlers.GetConfigDiff(opsSvc),
 		GetConfigAudit:    handlers.GetConfigAudit(opsSvc),
 		SetConfig:         handlers.SetConfig(opsSvc),
-		TriggerFailover:   handlers.TriggerFailover(opsSvc),
-		GetStaleLocks:     handlers.GetStaleLocks(diagSvc),
+		TriggerFailover: handlers.TriggerFailover(opsSvc),
+		GetStaleLocks:   handlers.GetStaleLocks(diagSvc),
+
+		SeedData:      handlers.SeedData(chaosSvc),
+		FlushData:     handlers.FlushData(chaosSvc),
+		ChaosFailover: handlers.ChaosFailover(chaosSvc),
 
 		Logger: logger,
 	})
