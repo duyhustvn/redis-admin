@@ -30,9 +30,18 @@ type TopologySnapshot struct {
 	CapturedAt time.Time  `json:"captured_at"`
 }
 
+// NodeAddresses holds the current master and replica addresses resolved from Sentinel.
+type NodeAddresses struct {
+	Master   string
+	Replicas []string
+}
+
 // Service exposes sentinel topology operations used by the API layer.
 type Service interface {
 	GetTopology(ctx context.Context) (*TopologySnapshot, error)
+	// GetNodeAddresses is a lightweight call that returns master + replica addrs
+	// without fetching full INFO for each node.
+	GetNodeAddresses(ctx context.Context) (*NodeAddresses, error)
 	IsReady(ctx context.Context) error
 }
 
@@ -194,6 +203,39 @@ func parseInfoSection(raw string) map[string]string {
 		}
 	}
 	return result
+}
+
+// GetNodeAddresses resolves the current master and replica addresses from Sentinel
+// without fetching INFO for each node. Cheaper than GetTopology.
+func (s *TopologyService) GetNodeAddresses(ctx context.Context) (*NodeAddresses, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	sc, sentinelAddr, err := s.reachableSentinel(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get node addresses: %w", ErrNodeUnreachable)
+	}
+	defer sc.Close()
+
+	masterParts, err := sc.GetMasterAddrByName(ctx, s.cfg.MasterName).Result()
+	if err != nil || len(masterParts) < 2 {
+		return nil, fmt.Errorf("get master from sentinel %s: %w", sentinelAddr, ErrNoMaster)
+	}
+
+	addrs := &NodeAddresses{Master: masterParts[0] + ":" + masterParts[1]}
+
+	replicaMaps, err := sc.Replicas(ctx, s.cfg.MasterName).Result()
+	if err != nil {
+		s.logger.Warn("failed to list replicas for node addresses", zap.Error(err))
+	}
+	for _, rm := range replicaMaps {
+		ip, port := rm["ip"], rm["port"]
+		if ip == "" || port == "" {
+			continue
+		}
+		addrs.Replicas = append(addrs.Replicas, ip+":"+port)
+	}
+	return addrs, nil
 }
 
 // sentinelFlagsUnhealthy returns true when sentinel flags indicate a node is down.

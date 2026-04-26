@@ -7,24 +7,48 @@ import (
 )
 
 // Deps holds pre-built handler functions injected at startup.
-// Keeping handlers out of this package avoids an import cycle:
-// api/handlers → api (response helpers) and api (routes) → api/handlers.
+// Using echo.HandlerFunc here instead of service interfaces avoids the import
+// cycle: api/handlers → api (response helpers) and api (routes) → api/handlers.
 type Deps struct {
+	// Phase 1
 	Healthz     echo.HandlerFunc
 	Readyz      echo.HandlerFunc
 	GetTopology echo.HandlerFunc
 	EventStream echo.HandlerFunc
-	Logger      *zap.Logger
+
+	// Phase 2
+	GetConnections  echo.HandlerFunc
+	GetDistribution echo.HandlerFunc
+	GetSlowlog      echo.HandlerFunc
+	GetPipeline     echo.HandlerFunc
+
+	Logger *zap.Logger
 }
 
-// RegisterRoutes mounts all Phase 1 routes on e.
-// Health probes are at the root level (used by K8s); API routes are under /api/v1.
+// RegisterRoutes mounts all routes on e.
+// Health probes are at root level (used by K8s); API routes are under /api/v1.
 func RegisterRoutes(e *echo.Echo, deps Deps) {
 	e.GET("/healthz", deps.Healthz)
 	e.GET("/readyz", deps.Readyz)
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	v1 := e.Group("/api/v1")
+
+	// Phase 1
 	v1.GET("/topology", deps.GetTopology)
 	v1.GET("/events/stream", deps.EventStream)
+
+	// Phase 2
+	if deps.GetConnections != nil {
+		v1.GET("/connections", deps.GetConnections)
+	}
+	if deps.GetDistribution != nil {
+		v1.GET("/connections/distribution", deps.GetDistribution)
+	}
+	if deps.GetSlowlog != nil {
+		v1.GET("/diagnostics/slowlog", deps.GetSlowlog)
+	}
+	if deps.GetPipeline != nil {
+		v1.GET("/diagnostics/pipeline", deps.GetPipeline)
+	}
 }

@@ -17,6 +17,353 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/connections": {
+            "get": {
+                "description": "Runs CLIENT LIST on every Redis node, groups connections by source IP, and enriches each entry with Kubernetes Pod metadata (name, namespace, deployment) where available. Also reports which connected pods are CPU-throttled.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "connections"
+                ],
+                "summary": "List client connections per node",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.NodeConnections"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "No sentinel reachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No master found",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/connections/distribution": {
+            "get": {
+                "description": "Fetches INFO commandstats from every replica, classifies each command as read or write, and computes percentages. A replica is flagged as overloaded when it carries more than 80% of total cluster read traffic.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "connections"
+                ],
+                "summary": "Read/write distribution per replica",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.ReplicaDistribution"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "No sentinel reachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No master found",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/diagnostics/pipeline": {
+            "get": {
+                "description": "Collects EXECABORT error counts, rejected_calls, maximum input buffer size, and oversized pipeline client counts (qbuf \u003e 1 MiB) from every node.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "diagnostics"
+                ],
+                "summary": "Get pipeline and transaction stats per node",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.PipelineReport"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "No sentinel reachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/diagnostics/slowlog": {
+            "get": {
+                "description": "Pulls SLOWLOG GET from all nodes (master + replicas), aggregates entries, and returns them sorted by execution time descending. Use the limit parameter to control how many entries are returned.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "diagnostics"
+                ],
+                "summary": "Get slow commands across cluster",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Max entries to return (default 50, max 200)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.SlowlogEntry"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid limit",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "No sentinel reachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/events/stream": {
             "get": {
                 "description": "Server-Sent Events stream of real-time Sentinel events (+sdown, -sdown, +odown, +failover-*). Connect and keep the connection open to receive events as they happen. Each event line is: ` + "`" + `event: sentinel\\ndata: {json}\\n\\n` + "`" + `.",
@@ -252,6 +599,139 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "ok"
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo": {
+            "type": "object",
+            "properties": {
+                "conn_count": {
+                    "type": "integer"
+                },
+                "deployment": {
+                    "type": "string"
+                },
+                "max_idle_sec": {
+                    "type": "integer"
+                },
+                "max_qbuf_bytes": {
+                    "type": "integer"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "pod_name": {
+                    "type": "string"
+                },
+                "source_addr": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_connection.NodeConnections": {
+            "type": "object",
+            "properties": {
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo"
+                    }
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "throttled_pods": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_connection.ReplicaDistribution": {
+            "type": "object",
+            "properties": {
+                "node_addr": {
+                    "type": "string"
+                },
+                "overloaded": {
+                    "description": "true when this replica carries \u003e80% of total cluster reads",
+                    "type": "boolean"
+                },
+                "read_count": {
+                    "type": "integer"
+                },
+                "read_pct": {
+                    "type": "number"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "write_count": {
+                    "type": "integer"
+                },
+                "write_pct": {
+                    "type": "number"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.PipelineReport": {
+            "type": "object",
+            "properties": {
+                "exec_abort_count": {
+                    "description": "EXECABORT errors since node start",
+                    "type": "integer"
+                },
+                "max_input_buffer_bytes": {
+                    "description": "client_recent_max_input_buffer",
+                    "type": "integer"
+                },
+                "node_addr": {
+                    "type": "string"
+                },
+                "oversized_pipelines": {
+                    "description": "clients with qbuf \u003e 1 MiB",
+                    "type": "integer"
+                },
+                "rejected_calls": {
+                    "description": "commands rejected (errors/limits)",
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.SlowlogEntry": {
+            "type": "object",
+            "properties": {
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "client_addr": {
+                    "type": "string"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "duration_us": {
+                    "description": "execution time in microseconds",
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "node_addr": {
+                    "type": "string"
                 },
                 "timestamp": {
                     "type": "string"

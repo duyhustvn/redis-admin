@@ -22,6 +22,8 @@ import (
 	"github.com/duydinhle/redis-sentinel-admin/internal/api"
 	"github.com/duydinhle/redis-sentinel-admin/internal/api/handlers"
 	"github.com/duydinhle/redis-sentinel-admin/internal/config"
+	"github.com/duydinhle/redis-sentinel-admin/internal/connection"
+	"github.com/duydinhle/redis-sentinel-admin/internal/diagnostics"
 	"github.com/duydinhle/redis-sentinel-admin/internal/k8s"
 	"github.com/duydinhle/redis-sentinel-admin/internal/sentinel"
 	"go.uber.org/zap"
@@ -51,37 +53,50 @@ func main() {
 		zap.Int("http_port", cfg.HTTPPort),
 	)
 
-	// Root context — cancelled on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Core services
+	// ── Sentinel layer ────────────────────────────────────────────────────────
 	sentinelSvc := sentinel.NewTopologyService(cfg, logger)
 	bus := sentinel.NewEventBus()
 	pubSubListener := sentinel.NewPubSubListener(cfg, bus, logger)
 	go pubSubListener.Run(ctx)
 
-	// K8s Pod informer — optional; disabled gracefully when not in cluster and
-	// no kubeconfig is found (e.g. pure local dev without Docker Desktop).
+	// ── K8s layer (optional) ──────────────────────────────────────────────────
 	podCache := k8s.NewPodCache()
-	if k8sClient, err := k8s.BuildK8sClient(); err != nil {
-		logger.Warn("K8s client unavailable — pod IP mapping disabled", zap.Error(err))
+	var throttle *k8s.ThrottleChecker
+
+	k8sClient, k8sErr := k8s.BuildK8sClient()
+	if k8sErr != nil {
+		logger.Warn("K8s client unavailable — pod IP mapping and throttle check disabled",
+			zap.Error(k8sErr))
 	} else {
 		go func() {
 			if err := k8s.StartPodInformer(ctx, k8sClient, cfg.K8sNamespace, podCache); err != nil {
 				logger.Warn("pod informer stopped", zap.Error(err))
 			}
 		}()
+		throttle = k8s.NewThrottleChecker(podCache, logger)
 	}
 
-	// HTTP server
+	// ── Domain services ───────────────────────────────────────────────────────
+	connSvc := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
+	diagSvc := diagnostics.New(cfg, sentinelSvc, logger)
+
+	// ── HTTP server ───────────────────────────────────────────────────────────
 	srv := api.New(cfg, logger)
 	api.RegisterRoutes(srv.Echo(), api.Deps{
 		Healthz:     handlers.Healthz(),
 		Readyz:      handlers.Readyz(sentinelSvc),
 		GetTopology: handlers.GetTopology(sentinelSvc),
 		EventStream: handlers.EventStream(bus),
-		Logger:      logger,
+
+		GetConnections:  handlers.GetConnections(connSvc),
+		GetDistribution: handlers.GetDistribution(connSvc),
+		GetSlowlog:      handlers.GetSlowlog(diagSvc),
+		GetPipeline:     handlers.GetPipelineStats(diagSvc),
+
+		Logger: logger,
 	})
 
 	serverErr := make(chan error, 1)

@@ -45,6 +45,19 @@ func (c *PodCache) Lookup(ip string) (*corev1.Pod, bool) {
 	return pod, ok
 }
 
+// LookupByName scans the cache for a pod with the given namespace and name.
+// O(n) over the pod count — acceptable given the typical number of pods.
+func (c *PodCache) LookupByName(namespace, name string) *corev1.Pod {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, pod := range c.ipToPod {
+		if pod.Namespace == namespace && pod.Name == name {
+			return pod
+		}
+	}
+	return nil
+}
+
 // LookupEnriched returns enriched PodInfo for ip, or (nil, false) on cache miss.
 func (c *PodCache) LookupEnriched(ip string) (*PodInfo, bool) {
 	pod, ok := c.Lookup(ip)
