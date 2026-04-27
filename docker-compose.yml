@@ -1,0 +1,15 @@
+services:
+  redis-admin:
+    image: duyle95/redis-admin:1.0.0
+    container_name: redis-admin
+    ports:
+      - 8083:8083
+    environment:
+      HTTP_PORT: 8083
+      METRIC_PORT: 9090
+      SENTINEL_ADDRS: redis-headless
+      MASTER_NAME: redis-master
+      K8S_NAMESPACE: default
+      LOG_LEVEL: info
+      POLL_INTERVAL: 5s
+      SLOWLOG_INTERVAL: 10s

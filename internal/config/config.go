@@ -3,7 +3,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -25,14 +24,9 @@ type Config struct {
 	WebhookURL       string        `mapstructure:"webhook_url"`
 }
 
-// Load reads configuration from the YAML file at path and then applies
-// any RSA_* environment variable overrides.
-func Load(path string) (*Config, error) {
+// Load reads configuration from the YAML file at path and then apply
+func Load() (*Config, error) {
 	v := viper.New()
-	v.SetConfigFile(path)
-	v.SetEnvPrefix("RSA")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
 
 	v.SetDefault("sentinel_addrs", []string{"localhost:26379"})
 	v.SetDefault("master_name", "mymaster")
@@ -43,24 +37,27 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("poll_interval", "5s")
 	v.SetDefault("slowlog_interval", "10s")
 
+	// config read from yaml
+	v.AddConfigPath(".") // search at this directory
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+
+	// Config read from env
+	v.AutomaticEnv()
+
+	// Change "." in struct to "_" in ENV (server.port -> SERVER_PORT)
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config file %s: %w", path, err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			// error is not "file not found"
+			return nil, err
+		}
 	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
-	}
-
-	// Viper does not automatically split comma-separated env vars into slices.
-	if s := os.Getenv("RSA_SENTINEL_ADDRS"); s != "" {
-		cfg.SentinelAddrs = strings.Split(s, ",")
-	}
-	if s := os.Getenv("RSA_SENTINEL_PASSWORD"); s != "" {
-		cfg.SentinelPassword = s
-	}
-	if s := os.Getenv("RSA_REDIS_PASSWORD"); s != "" {
-		cfg.RedisPassword = s
 	}
 
 	if err := cfg.validate(); err != nil {
