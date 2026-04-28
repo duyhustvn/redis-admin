@@ -66,11 +66,10 @@ func main() {
 
 	// ── K8s layer (optional) ──────────────────────────────────────────────────
 	podCache := k8s.NewPodCache()
-	var throttle *k8s.ThrottleChecker
 
 	k8sClient, k8sErr := k8s.BuildK8sClient()
 	if k8sErr != nil {
-		logger.Warn("K8s client unavailable — pod IP mapping and throttle check disabled",
+		logger.Warn("K8s client unavailable — pod IP mapping check disabled",
 			zap.Error(k8sErr))
 	} else {
 		go func() {
@@ -78,11 +77,10 @@ func main() {
 				logger.Warn("pod informer stopped", zap.Error(err))
 			}
 		}()
-		throttle = k8s.NewThrottleChecker(podCache, logger)
 	}
 
 	// ── Domain services ───────────────────────────────────────────────────────
-	connSvc := connection.New(cfg, sentinelSvc, podCache, throttle, logger)
+	connSvc := connection.New(cfg, sentinelSvc, podCache, logger)
 	diagSvc := diagnostics.New(cfg, sentinelSvc, logger)
 	keysSvc := keys.New(cfg, sentinelSvc, logger)
 	replSvc := replication.New(cfg, sentinelSvc, logger)

@@ -32,7 +32,6 @@ type NodeConnections struct {
 	Total         int                `json:"total"`
 	UniqueClients int                `json:"unique_clients"`
 	Clients       []ClientInfo       `json:"clients"`
-	ThrottledPods []string           `json:"throttled_pods,omitempty"`
 	Suspicious    []SuspiciousClient `json:"suspicious,omitempty"`
 }
 
@@ -53,7 +52,6 @@ type ConnectionService struct {
 	cfg         *config.Config
 	sentinelSvc sentinel.Service
 	podCache    *k8s.PodCache
-	throttle    *k8s.ThrottleChecker
 	logger      *zap.Logger
 }
 
@@ -62,20 +60,18 @@ func New(
 	cfg *config.Config,
 	svc sentinel.Service,
 	cache *k8s.PodCache,
-	throttle *k8s.ThrottleChecker,
 	logger *zap.Logger,
 ) *ConnectionService {
 	return &ConnectionService{
 		cfg:         cfg,
 		sentinelSvc: svc,
 		podCache:    cache,
-		throttle:    throttle,
 		logger:      logger,
 	}
 }
 
 // GetConnections fetches CLIENT LIST from every node, groups by source IP,
-// enriches with pod metadata, and optionally flags CPU-throttled pods.
+// enriches with pod metadata
 func (s *ConnectionService) GetConnections(ctx context.Context) ([]NodeConnections, error) {
 	addrs, err := s.sentinelSvc.GetNodeAddresses(ctx)
 	if err != nil {
@@ -105,8 +101,7 @@ func (s *ConnectionService) GetConnections(ctx context.Context) ([]NodeConnectio
 	return results, errors.Join(errs...)
 }
 
-// fetchNodeConnections runs CLIENT LIST on addr, aggregates by source IP, and
-// optionally detects CPU-throttled pods.
+// fetchNodeConnections runs CLIENT LIST on addr, aggregates by source IP
 func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role string) (NodeConnections, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -161,20 +156,6 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 	for _, ci := range byIP {
 		enrichWithPodInfo(ci, s.podCache)
 		nc.Clients = append(nc.Clients, *ci)
-	}
-
-	// Check which connected pods (by name) are CPU-throttled.
-	if s.throttle != nil {
-		seen := make(map[string]bool)
-		for _, ci := range nc.Clients {
-			if ci.PodName == "" || ci.Namespace == "" || seen[ci.PodName] {
-				continue
-			}
-			seen[ci.PodName] = true
-			if s.throttle.IsThrottled(ctx, ci.Namespace, ci.PodName) {
-				nc.ThrottledPods = append(nc.ThrottledPods, ci.PodName)
-			}
-		}
 	}
 
 	// Detect suspicious clients (connection leak / abnormal)
