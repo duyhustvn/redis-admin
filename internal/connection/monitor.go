@@ -37,6 +37,9 @@ type NodeConnections struct {
 
 type SuspiciousClient struct {
 	SourceAddr string `json:"source_addr"`
+	PodName    string `json:"pod_name,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
+	Deployment string `json:"deployment,omitempty"`
 	Reason     string `json:"reason"`
 	Severity   string `json:"severity"` // warning | critical
 }
@@ -165,6 +168,9 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 		if ci.ConnCount >= 5 && ci.MaxIdleSec > 86400 {
 			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
 				SourceAddr: ci.SourceAddr,
+				PodName:    ci.PodName,
+				Namespace:  ci.Namespace,
+				Deployment: ci.Deployment,
 				Reason:     "high connections with very long idle (>1d)",
 				Severity:   "critical",
 			})
@@ -175,6 +181,9 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 		if ci.ConnCount >= 3 && ci.MaxIdleSec > 300 {
 			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
 				SourceAddr: ci.SourceAddr,
+				PodName:    ci.PodName,
+				Namespace:  ci.Namespace,
+				Deployment: ci.Deployment,
 				Reason:     "multiple connections with idle >5m",
 				Severity:   "warning",
 			})
@@ -185,6 +194,9 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 		if ci.MaxIdleSec > 3600 {
 			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
 				SourceAddr: ci.SourceAddr,
+				PodName:    ci.PodName,
+				Namespace:  ci.Namespace,
+				Deployment: ci.Deployment,
 				Reason:     "idle >1h",
 				Severity:   "warning",
 			})
