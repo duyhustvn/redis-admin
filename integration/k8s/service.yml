@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-admin
+  labels:
+    service: redis-admin
+    service-manage-key: redis-admin-stateless
+
+spec:
+  ports:
+    - protocol: TCP
+      name: web
+      port: 80
+      targetPort: 8081
+  selector:
+    app: redis-admin

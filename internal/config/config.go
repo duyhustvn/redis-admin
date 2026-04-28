@@ -30,6 +30,7 @@ func Load() (*Config, error) {
 
 	v.SetDefault("sentinel_addrs", []string{"localhost:26379"})
 	v.SetDefault("master_name", "mymaster")
+	v.SetDefault("redis_password", "")
 	v.SetDefault("k8s_namespace", "default")
 	v.SetDefault("log_level", "info")
 	v.SetDefault("http_port", 8080)

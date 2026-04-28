@@ -1,0 +1,54 @@
+kind: Deployment 
+apiVersion: apps/v1 
+metadata:   
+  namespace: default   
+  name: redis-admin   
+  labels:     
+    app: redis-admin     
+spec:   
+  replicas: 1   
+  selector:     
+    matchLabels:       
+      app: redis-admin   
+  template:     
+    metadata:       
+      labels:         
+        app: redis-admin         
+    spec:       
+      containers:         
+        - name: redis-admin           
+          image: duyle95/redis-admin:1.0.0
+          imagePullPolicy: Always           
+          ports:             
+            - name: web               
+              containerPort: 8081           
+          env:             
+            - name: HTTP_PORT               
+              value: "8081"             
+            - name: METRIC_PORT               
+              value: "9090"             
+            - name: SENTINEL_ADDRS               
+              value: "redis-headless:26379"             
+            - name: MASTER_NAME               
+              value: "redis-master"             
+            - name: REDIS_PASSWORD               
+              valueFrom:                 
+                secretKeyRef:                   
+                  name: redis-credentials                   
+                  key: redis-password                   
+                  optional: false                             
+            - name: K8S_NAMESPACE               
+              value: "default"             
+            - name: LOG_LEVEL               
+              value: "info"             
+            - name: POLL_INTERVAL               
+              value: "5s"             
+            - name: SLOWLOG_INTERVAL               
+              value: "10s"
+          resources:
+            requests:
+              cpu: 1
+              memory: 1Gi
+            limits:
+              cpu: 4
+              memory: 4Gi
