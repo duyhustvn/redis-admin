@@ -15,6 +15,7 @@ spec:
       labels:         
         app: redis-admin         
     spec:       
+      serviceAccountName: redis-admin
       containers:         
         - name: redis-admin           
           image: duyle95/redis-admin:1.0.0

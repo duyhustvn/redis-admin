@@ -12,9 +12,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/rest"
 )
 
 // PodInfo holds enriched metadata about a Pod resolved from its IP.
@@ -43,19 +43,6 @@ func (c *PodCache) Lookup(ip string) (*corev1.Pod, bool) {
 	defer c.mu.RUnlock()
 	pod, ok := c.ipToPod[ip]
 	return pod, ok
-}
-
-// LookupByName scans the cache for a pod with the given namespace and name.
-// O(n) over the pod count — acceptable given the typical number of pods.
-func (c *PodCache) LookupByName(namespace, name string) *corev1.Pod {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, pod := range c.ipToPod {
-		if pod.Namespace == namespace && pod.Name == name {
-			return pod
-		}
-	}
-	return nil
 }
 
 // LookupEnriched returns enriched PodInfo for ip, or (nil, false) on cache miss.
