@@ -27,11 +27,19 @@ type ClientInfo struct {
 
 // NodeConnections holds aggregated connection data for one Redis node.
 type NodeConnections struct {
-	NodeAddr      string       `json:"node_addr"`
-	Role          string       `json:"role"`
-	Total         int          `json:"total"`
-	Clients       []ClientInfo `json:"clients"`
-	ThrottledPods []string     `json:"throttled_pods,omitempty"`
+	NodeAddr      string             `json:"node_addr"`
+	Role          string             `json:"role"`
+	Total         int                `json:"total"`
+	UniqueClients int                `json:"unique_clients"`
+	Clients       []ClientInfo       `json:"clients"`
+	ThrottledPods []string           `json:"throttled_pods,omitempty"`
+	Suspicious    []SuspiciousClient `json:"suspicious,omitempty"`
+}
+
+type SuspiciousClient struct {
+	SourceAddr string `json:"source_addr"`
+	Reason     string `json:"reason"`
+	Severity   string `json:"severity"` // warning | critical
 }
 
 // Service exposes connection monitoring and distribution operations.
@@ -108,7 +116,7 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 
 	raw, err := client.ClientList(ctx).Result()
 	if err != nil {
-		return NodeConnections{}, fmt.Errorf("CLIENT LIST on %s: %w", addr, sentinel.ErrNodeUnreachable)
+		return NodeConnections{}, fmt.Errorf("CLIENT LIST on %s: %w", addr, err)
 	}
 
 	// Aggregate raw connections by source IP.
@@ -119,6 +127,12 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 			continue
 		}
 		fields := parseKVLine(line)
+
+		// bỏ qua connection nội bộ Redis như replication/sentinel/internal link.
+		if strings.Contains(fields["flags"], "S") {
+			continue
+		}
+
 		srcAddr := fields["addr"]
 		if srcAddr == "" {
 			continue
@@ -138,7 +152,12 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 		}
 	}
 
-	nc := NodeConnections{NodeAddr: addr, Role: role, Total: len(byIP)}
+	totalConnections := 0
+	for _, ci := range byIP {
+		totalConnections += ci.ConnCount
+	}
+
+	nc := NodeConnections{NodeAddr: addr, Role: role, Total: totalConnections, UniqueClients: len(byIP)}
 	for _, ci := range byIP {
 		enrichWithPodInfo(ci, s.podCache)
 		nc.Clients = append(nc.Clients, *ci)
@@ -155,6 +174,39 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 			if s.throttle.IsThrottled(ctx, ci.Namespace, ci.PodName) {
 				nc.ThrottledPods = append(nc.ThrottledPods, ci.PodName)
 			}
+		}
+	}
+
+	// Detect suspicious clients (connection leak / abnormal)
+	for _, ci := range nc.Clients {
+
+		// Rule 3: severe leak conn_count >= 5 AND max_idle_sec > 1 ngày
+		if ci.ConnCount >= 5 && ci.MaxIdleSec > 86400 {
+			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
+				SourceAddr: ci.SourceAddr,
+				Reason:     "high connections with very long idle (>1d)",
+				Severity:   "critical",
+			})
+			continue
+		}
+
+		// Rule 1: possible leak conn_count >= 3 AND max_idle_sec > 300s (5 phút)
+		if ci.ConnCount >= 3 && ci.MaxIdleSec > 300 {
+			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
+				SourceAddr: ci.SourceAddr,
+				Reason:     "multiple connections with idle >5m",
+				Severity:   "warning",
+			})
+			continue
+		}
+
+		// Rule 2: zombie max_idle_sec > 3600 (1 giờ)
+		if ci.MaxIdleSec > 3600 {
+			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
+				SourceAddr: ci.SourceAddr,
+				Reason:     "idle >1h",
+				Severity:   "warning",
+			})
 		}
 	}
 	return nc, nil

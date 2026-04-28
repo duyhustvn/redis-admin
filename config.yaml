@@ -12,7 +12,7 @@ k8s_namespace: default
 
 log_level: info
 
-http_port: 8083
+http_port: 8080
 metrics_port: 9090
 
 poll_interval: 5s
