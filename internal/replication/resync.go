@@ -19,7 +19,7 @@ type ResyncReport struct {
 	TotalResyncs      int64  `json:"total_resyncs"`
 	BacklogSize       int64  `json:"backlog_size_bytes"`
 	BacklogActiveSize int64  `json:"backlog_active_size_bytes"`
-	BacklogAlert      bool   `json:"backlog_alert"`          // active > 90% of backlog size
+	BacklogAlert      bool   `json:"backlog_alert"` // active > 90% of backlog size
 	Advisory          string `json:"advisory,omitempty"`
 }
 

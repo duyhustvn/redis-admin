@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/duydinhle/redis-sentinel-admin/internal/sentinel"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ChaosFailoverResult describes the outcome of a chaos failover trigger.
 type ChaosFailoverResult struct {
-	Mode      string `json:"mode"`              // "sentinel" | "pod"
-	Target    string `json:"target,omitempty"`  // sentinel addr or pod name
+	Mode      string `json:"mode"`             // "sentinel" | "pod"
+	Target    string `json:"target,omitempty"` // sentinel addr or pod name
 	ElapsedMs int64  `json:"elapsed_ms"`
 }
 

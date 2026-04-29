@@ -14,24 +14,24 @@ import (
 
 // MemoryReport aggregates memory health indicators for a single cluster node.
 type MemoryReport struct {
-	NodeAddr            string  `json:"node_addr"`
-	Role                string  `json:"role"`
-	UsedMemoryBytes     int64   `json:"used_memory_bytes"`
-	UsedMemoryHuman     string  `json:"used_memory_human"`
-	MaxMemoryBytes      int64   `json:"max_memory_bytes"`
-	FragRatio           float64 `json:"frag_ratio"`
-	FragAlert           bool    `json:"frag_alert"`           // true when frag_ratio > 1.5
-	EvictionPolicy      string  `json:"eviction_policy"`
-	EvictedKeysTotal    int64   `json:"evicted_keys_total"`
-	EvictedKeysPerSec   float64 `json:"evicted_keys_per_sec"` // delta since last call
-	RDBEnabled          bool    `json:"rdb_enabled"`
-	RDBLastSaveTime     int64   `json:"rdb_last_save_time"`
-	RDBChangesSinceSave int64   `json:"rdb_changes_since_save"`
-	RDBLastBgsaveStatus string  `json:"rdb_last_bgsave_status"`
-	RDBAlert            bool    `json:"rdb_alert"` // true when last bgsave failed
-	AOFEnabled          bool    `json:"aof_enabled"`
-	AOFLastRewriteStatus string `json:"aof_last_rewrite_status,omitempty"`
-	AOFAlert            bool    `json:"aof_alert"` // true when last aof rewrite failed
+	NodeAddr             string  `json:"node_addr"`
+	Role                 string  `json:"role"`
+	UsedMemoryBytes      int64   `json:"used_memory_bytes"`
+	UsedMemoryHuman      string  `json:"used_memory_human"`
+	MaxMemoryBytes       int64   `json:"max_memory_bytes"`
+	FragRatio            float64 `json:"frag_ratio"`
+	FragAlert            bool    `json:"frag_alert"` // true when frag_ratio > 1.5
+	EvictionPolicy       string  `json:"eviction_policy"`
+	EvictedKeysTotal     int64   `json:"evicted_keys_total"`
+	EvictedKeysPerSec    float64 `json:"evicted_keys_per_sec"` // delta since last call
+	RDBEnabled           bool    `json:"rdb_enabled"`
+	RDBLastSaveTime      int64   `json:"rdb_last_save_time"`
+	RDBChangesSinceSave  int64   `json:"rdb_changes_since_save"`
+	RDBLastBgsaveStatus  string  `json:"rdb_last_bgsave_status"`
+	RDBAlert             bool    `json:"rdb_alert"` // true when last bgsave failed
+	AOFEnabled           bool    `json:"aof_enabled"`
+	AOFLastRewriteStatus string  `json:"aof_last_rewrite_status,omitempty"`
+	AOFAlert             bool    `json:"aof_alert"` // true when last aof rewrite failed
 }
 
 // GetMemory collects memory, persistence, and eviction stats from every node.
@@ -79,11 +79,11 @@ func (s *DiagnosticsService) fetchMemory(ctx context.Context, addr, role string)
 	kv := parseInfoAll(raw)
 
 	report := MemoryReport{
-		NodeAddr:            addr,
-		Role:                role,
-		UsedMemoryHuman:     kv["used_memory_human"],
-		EvictionPolicy:      kv["maxmemory_policy"],
-		RDBLastBgsaveStatus: kv["rdb_last_bgsave_status"],
+		NodeAddr:             addr,
+		Role:                 role,
+		UsedMemoryHuman:      kv["used_memory_human"],
+		EvictionPolicy:       kv["maxmemory_policy"],
+		RDBLastBgsaveStatus:  kv["rdb_last_bgsave_status"],
 		AOFLastRewriteStatus: kv["aof_last_bgrewrite_status"],
 	}
 

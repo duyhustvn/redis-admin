@@ -25,11 +25,11 @@ type KeyReport struct {
 
 // NamespaceStat aggregates big-key findings per key namespace prefix.
 type NamespaceStat struct {
-	Namespace string  `json:"namespace"`
-	KeyCount  int64   `json:"key_count"`
-	TotalBytes int64  `json:"total_bytes"`
-	AvgBytes  float64 `json:"avg_bytes"`
-	MaxBytes  int64   `json:"max_bytes"`
+	Namespace  string  `json:"namespace"`
+	KeyCount   int64   `json:"key_count"`
+	TotalBytes int64   `json:"total_bytes"`
+	AvgBytes   float64 `json:"avg_bytes"`
+	MaxBytes   int64   `json:"max_bytes"`
 }
 
 // KeysService exposes key-level intelligence operations.

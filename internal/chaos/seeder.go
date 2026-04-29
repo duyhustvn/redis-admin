@@ -12,8 +12,8 @@ import (
 	"github.com/duydinhle/redis-sentinel-admin/internal/config"
 	"github.com/duydinhle/redis-sentinel-admin/internal/sentinel"
 	"github.com/redis/go-redis/v9"
-	k8sclient "k8s.io/client-go/kubernetes"
 	"go.uber.org/zap"
+	k8sclient "k8s.io/client-go/kubernetes"
 )
 
 // SeedResult summarises a completed seed operation.

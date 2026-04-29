@@ -63,6 +63,9 @@ func RegisterRoutes(e *echo.Echo, deps Deps) {
 	if deps.GetConnections != nil {
 		v1.GET("/connections", deps.GetConnections)
 	}
+	if deps.GetConnections != nil {
+		v1.GET("/connections/analysis", deps.AnalyzeConnections)
+	}
 	if deps.GetDistribution != nil {
 		v1.GET("/connections/distribution", deps.GetDistribution)
 	}

@@ -11,11 +11,11 @@ import (
 
 // NamespaceTTLReport summarises TTL health for a single key namespace prefix.
 type NamespaceTTLReport struct {
-	Namespace    string  `json:"namespace"`
-	TotalKeys    int64   `json:"total_keys"`
-	NoTTLKeys    int64   `json:"no_ttl_keys"`
-	NoTTLPct     float64 `json:"no_ttl_pct"`  // percentage of keys with no TTL
-	NoTTLAlert   bool    `json:"no_ttl_alert"` // true when >50% of keys have no TTL
+	Namespace  string  `json:"namespace"`
+	TotalKeys  int64   `json:"total_keys"`
+	NoTTLKeys  int64   `json:"no_ttl_keys"`
+	NoTTLPct   float64 `json:"no_ttl_pct"`   // percentage of keys with no TTL
+	NoTTLAlert bool    `json:"no_ttl_alert"` // true when >50% of keys have no TTL
 }
 
 type nsStat struct {
