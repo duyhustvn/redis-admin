@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -44,10 +45,26 @@ type SuspiciousClient struct {
 	Severity   string `json:"severity"` // warning | critical
 }
 
+type AnalysisSummary struct {
+	TotalConnections int `json:"total_connections"`
+	UniqueClients    int `json:"unique_clients"`
+	SuspiciousCount  int `json:"suspicious_count"`
+	CriticalCount    int `json:"critical_count"`
+}
+
+type AnalysisResponse struct {
+	Summary          AnalysisSummary    `json:"summary"`
+	TopByConnections []ClientInfo       `json:"top_by_connections"`
+	TopByIdle        []ClientInfo       `json:"top_by_idle"`
+	Suspicious       []SuspiciousClient `json:"suspicious"`
+	Recommendations  []string           `json:"recommendations"`
+}
+
 // Service exposes connection monitoring and distribution operations.
 type Service interface {
 	GetConnections(ctx context.Context) ([]NodeConnections, error)
 	GetDistribution(ctx context.Context) ([]ReplicaDistribution, error)
+	AnalyzeConnections(ctx context.Context) (*AnalysisResponse, error)
 }
 
 // ConnectionService implements Service.
@@ -216,4 +233,129 @@ func parseKVLine(line string) map[string]string {
 		fields[token[:idx]] = token[idx+1:]
 	}
 	return fields
+}
+
+func (s *ConnectionService) AnalyzeConnections(ctx context.Context) (*AnalysisResponse, error) {
+	nodes, err := s.GetConnections(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// flatten all clients
+	var allClients []ClientInfo
+	var allSuspicious []SuspiciousClient
+
+	clientMap := make(map[string]*ClientInfo)
+
+	for _, n := range nodes {
+		for _, c := range n.Clients {
+
+			// merge theo IP (cluster-wide)
+			existing, ok := clientMap[c.SourceAddr]
+			if !ok {
+				tmp := c
+				clientMap[c.SourceAddr] = &tmp
+				continue
+			}
+
+			existing.ConnCount += c.ConnCount
+
+			if c.MaxIdleSec > existing.MaxIdleSec {
+				existing.MaxIdleSec = c.MaxIdleSec
+			}
+
+			if c.MaxQBufBytes > existing.MaxQBufBytes {
+				existing.MaxQBufBytes = c.MaxQBufBytes
+			}
+		}
+
+		allSuspicious = append(allSuspicious, n.Suspicious...)
+	}
+
+	for _, c := range clientMap {
+		allClients = append(allClients, *c)
+	}
+
+	// sort top connections
+	sort.Slice(allClients, func(i, j int) bool {
+		return allClients[i].ConnCount > allClients[j].ConnCount
+	})
+
+	topConn := topN(allClients, 10)
+
+	// sort top idle
+	sort.Slice(allClients, func(i, j int) bool {
+		return allClients[i].MaxIdleSec > allClients[j].MaxIdleSec
+	})
+
+	topIdle := topN(allClients, 10)
+
+	// summary
+	totalConnections := 0
+	for _, c := range allClients {
+		totalConnections += c.ConnCount
+	}
+
+	criticalCount := 0
+	for _, s := range allSuspicious {
+		if s.Severity == "critical" {
+			criticalCount++
+		}
+	}
+
+	summary := AnalysisSummary{
+		TotalConnections: totalConnections,
+		UniqueClients:    len(allClients),
+		SuspiciousCount:  len(allSuspicious),
+		CriticalCount:    criticalCount,
+	}
+
+	// recommendations
+	recommendations := buildRecommendations(allClients, allSuspicious)
+
+	return &AnalysisResponse{
+		Summary:          summary,
+		TopByConnections: topConn,
+		TopByIdle:        topIdle,
+		Suspicious:       allSuspicious,
+		Recommendations:  recommendations,
+	}, nil
+}
+
+func topN(clients []ClientInfo, n int) []ClientInfo {
+	if len(clients) < n {
+		return clients
+	}
+	return clients[:n]
+}
+
+func buildRecommendations(clients []ClientInfo, suspicious []SuspiciousClient) []string {
+	var recs []string
+
+	for _, s := range suspicious {
+		if s.Severity == "critical" {
+			recs = append(recs, "Critical: some clients have connection leak (high conn + long idle)")
+			break
+		}
+	}
+
+	for _, c := range clients {
+		if c.MaxIdleSec > 3600 {
+			recs = append(recs, "Some connections idle >1h → check Redis pool config")
+			break
+		}
+	}
+
+	for _, c := range clients {
+		if c.ConnCount > 10 {
+			recs = append(recs, "Some clients open too many connections → check pooling")
+			break
+		}
+	}
+
+	if len(recs) == 0 {
+		recs = append(recs, "No obvious issues detected")
+	}
+
+	return recs
 }

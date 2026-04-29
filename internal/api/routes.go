@@ -1,8 +1,8 @@
 package api
 
 import (
-	echoSwagger "github.com/swaggo/echo-swagger"
 	"github.com/labstack/echo/v4"
+	echoSwagger "github.com/swaggo/echo-swagger"
 	"go.uber.org/zap"
 )
 
@@ -17,10 +17,11 @@ type Deps struct {
 	EventStream echo.HandlerFunc
 
 	// Phase 2
-	GetConnections  echo.HandlerFunc
-	GetDistribution echo.HandlerFunc
-	GetSlowlog      echo.HandlerFunc
-	GetPipeline     echo.HandlerFunc
+	GetConnections     echo.HandlerFunc
+	AnalyzeConnections echo.HandlerFunc
+	GetDistribution    echo.HandlerFunc
+	GetSlowlog         echo.HandlerFunc
+	GetPipeline        echo.HandlerFunc
 
 	// Phase 3
 	GetMemory     echo.HandlerFunc

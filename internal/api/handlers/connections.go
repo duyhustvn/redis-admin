@@ -33,6 +33,31 @@ func GetConnections(svc connection.Service) echo.HandlerFunc {
 	}
 }
 
+// AnalyzeConnections godoc
+//
+//	@Summary		Analyze Redis client connections
+//	@Description	Aggregates Redis CLIENT LIST data across all Redis nodes and detects abnormal/suspicious connection patterns such as connection leaks, long-idle clients, and excessive connection usage. Returns cluster-wide summaries, top offenders, suspicious clients, and operational recommendations.
+//	@Tags			connections
+//	@Produce		json
+//	@Success		200	{object}	api.APIResponse{data=connection.AnalysisResponse}
+//	@Failure		502	{object}	api.APIResponse{error=api.APIError}	"No sentinel reachable"
+//	@Failure		503	{object}	api.APIResponse{error=api.APIError}	"No master found"
+//	@Failure		504	{object}	api.APIResponse{error=api.APIError}	"Redis timeout"
+//	@Router			/connections/analysis [get]
+func AnalyzeConnections(svc connection.Service) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+		defer cancel()
+
+		result, err := svc.AnalyzeConnections(ctx)
+		if err != nil && result == nil {
+			return api.HandleErr(c, err)
+		}
+
+		return api.OK(c, result)
+	}
+}
+
 // GetDistribution godoc
 //
 //	@Summary		Read/write distribution per replica

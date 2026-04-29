@@ -97,10 +97,11 @@ func main() {
 		GetTopology: handlers.GetTopology(sentinelSvc),
 		EventStream: handlers.EventStream(bus),
 
-		GetConnections:  handlers.GetConnections(connSvc),
-		GetDistribution: handlers.GetDistribution(connSvc),
-		GetSlowlog:      handlers.GetSlowlog(diagSvc),
-		GetPipeline:     handlers.GetPipelineStats(diagSvc),
+		GetConnections:     handlers.GetConnections(connSvc),
+		AnalyzeConnections: handlers.AnalyzeConnections(connSvc),
+		GetDistribution:    handlers.GetDistribution(connSvc),
+		GetSlowlog:         handlers.GetSlowlog(diagSvc),
+		GetPipeline:        handlers.GetPipelineStats(diagSvc),
 
 		GetMemory:     handlers.GetMemory(diagSvc),
 		StreamBigkeys: handlers.StreamBigkeys(keysSvc),

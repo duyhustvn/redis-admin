@@ -23,3 +23,6 @@ docker-push:
 
 swag:
 	swag init -g cmd/server/main.go -o docs/swagger --parseDependency --parseInternal
+
+docker-save:
+	docker save -o redis-admin.tar $(IMG):$(IMG_TAG)

@@ -276,6 +276,92 @@ const docTemplate = `{
                 }
             }
         },
+        "/connections/analysis": {
+            "get": {
+                "description": "Aggregates Redis CLIENT LIST data across all Redis nodes and detects abnormal/suspicious connection patterns such as connection leaks, long-idle clients, and excessive connection usage. Returns cluster-wide summaries, top offenders, suspicious clients, and operational recommendations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "connections"
+                ],
+                "summary": "Analyze Redis client connections",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "502": {
+                        "description": "No sentinel reachable",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "503": {
+                        "description": "No master found",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "504": {
+                        "description": "Redis timeout",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/connections/distribution": {
             "get": {
                 "description": "Fetches INFO commandstats from every replica, classifies each command as read or write, and computes percentages. A replica is flagged as overloaded when it carries more than 80% of total cluster read traffic.",
@@ -1661,6 +1747,55 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisResponse": {
+            "type": "object",
+            "properties": {
+                "recommendations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "summary": {
+                    "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisSummary"
+                },
+                "suspicious": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.SuspiciousClient"
+                    }
+                },
+                "top_by_connections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo"
+                    }
+                },
+                "top_by_idle": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo"
+                    }
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisSummary": {
+            "type": "object",
+            "properties": {
+                "critical_count": {
+                    "type": "integer"
+                },
+                "suspicious_count": {
+                    "type": "integer"
+                },
+                "total_connections": {
+                    "type": "integer"
+                },
+                "unique_clients": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo": {
             "type": "object",
             "properties": {
@@ -1702,13 +1837,16 @@ const docTemplate = `{
                 "role": {
                     "type": "string"
                 },
-                "throttled_pods": {
+                "suspicious": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.SuspiciousClient"
                     }
                 },
                 "total": {
+                    "type": "integer"
+                },
+                "unique_clients": {
                     "type": "integer"
                 }
             }
@@ -1737,6 +1875,30 @@ const docTemplate = `{
                 },
                 "write_pct": {
                     "type": "number"
+                }
+            }
+        },
+        "github_com_duydinhle_redis-sentinel-admin_internal_connection.SuspiciousClient": {
+            "type": "object",
+            "properties": {
+                "deployment": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "pod_name": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "severity": {
+                    "description": "warning | critical",
+                    "type": "string"
+                },
+                "source_addr": {
+                    "type": "string"
                 }
             }
         },

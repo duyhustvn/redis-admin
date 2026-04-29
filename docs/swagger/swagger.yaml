@@ -130,6 +130,38 @@ definitions:
       prefix:
         type: string
     type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisResponse:
+    properties:
+      recommendations:
+        items:
+          type: string
+        type: array
+      summary:
+        $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisSummary'
+      suspicious:
+        items:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.SuspiciousClient'
+        type: array
+      top_by_connections:
+        items:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo'
+        type: array
+      top_by_idle:
+        items:
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo'
+        type: array
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisSummary:
+    properties:
+      critical_count:
+        type: integer
+      suspicious_count:
+        type: integer
+      total_connections:
+        type: integer
+      unique_clients:
+        type: integer
+    type: object
   github_com_duydinhle_redis-sentinel-admin_internal_connection.ClientInfo:
     properties:
       conn_count:
@@ -157,11 +189,13 @@ definitions:
         type: string
       role:
         type: string
-      throttled_pods:
+      suspicious:
         items:
-          type: string
+          $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.SuspiciousClient'
         type: array
       total:
+        type: integer
+      unique_clients:
         type: integer
     type: object
   github_com_duydinhle_redis-sentinel-admin_internal_connection.ReplicaDistribution:
@@ -181,6 +215,22 @@ definitions:
         type: integer
       write_pct:
         type: number
+    type: object
+  github_com_duydinhle_redis-sentinel-admin_internal_connection.SuspiciousClient:
+    properties:
+      deployment:
+        type: string
+      namespace:
+        type: string
+      pod_name:
+        type: string
+      reason:
+        type: string
+      severity:
+        description: warning | critical
+        type: string
+      source_addr:
+        type: string
     type: object
   github_com_duydinhle_redis-sentinel-admin_internal_diagnostics.LockReport:
     properties:
@@ -586,6 +636,54 @@ paths:
                   $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError'
               type: object
       summary: List client connections per node
+      tags:
+      - connections
+  /connections/analysis:
+    get:
+      description: Aggregates Redis CLIENT LIST data across all Redis nodes and detects
+        abnormal/suspicious connection patterns such as connection leaks, long-idle
+        clients, and excessive connection usage. Returns cluster-wide summaries, top
+        offenders, suspicious clients, and operational recommendations.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_connection.AnalysisResponse'
+              type: object
+        "502":
+          description: No sentinel reachable
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError'
+              type: object
+        "503":
+          description: No master found
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError'
+              type: object
+        "504":
+          description: Redis timeout
+          schema:
+            allOf:
+            - $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/github_com_duydinhle_redis-sentinel-admin_internal_api.APIError'
+              type: object
+      summary: Analyze Redis client connections
       tags:
       - connections
   /connections/distribution:
