@@ -241,16 +241,15 @@ func (s *ConnectionService) AnalyzeConnections(ctx context.Context) (*AnalysisRe
 		return nil, err
 	}
 
-	// flatten all clients
-	var allClients []ClientInfo
+	// Flatten toàn bộ clients trong cluster.
 	var allSuspicious []SuspiciousClient
 
+	// Aggregate theo source IP trên toàn cluster.
 	clientMap := make(map[string]*ClientInfo)
 
 	for _, n := range nodes {
 		for _, c := range n.Clients {
 
-			// merge theo IP (cluster-wide)
 			existing, ok := clientMap[c.SourceAddr]
 			if !ok {
 				tmp := c
@@ -258,6 +257,7 @@ func (s *ConnectionService) AnalyzeConnections(ctx context.Context) (*AnalysisRe
 				continue
 			}
 
+			// Merge connections từ nhiều Redis nodes.
 			existing.ConnCount += c.ConnCount
 
 			if c.MaxIdleSec > existing.MaxIdleSec {
@@ -269,35 +269,57 @@ func (s *ConnectionService) AnalyzeConnections(ctx context.Context) (*AnalysisRe
 			}
 		}
 
+		// Merge suspicious results từ từng node.
 		allSuspicious = append(allSuspicious, n.Suspicious...)
 	}
 
+	// Convert map -> slice
+	var allClients []ClientInfo
 	for _, c := range clientMap {
 		allClients = append(allClients, *c)
 	}
 
-	// sort top connections
-	sort.Slice(allClients, func(i, j int) bool {
-		return allClients[i].ConnCount > allClients[j].ConnCount
+	// ===== Top by connections =====
+	connCopy := append([]ClientInfo(nil), allClients...)
+
+	sort.Slice(connCopy, func(i, j int) bool {
+		return connCopy[i].ConnCount > connCopy[j].ConnCount
 	})
 
-	topConn := topN(allClients, 10)
+	topConn := topN(connCopy, 10)
 
-	// sort top idle
-	sort.Slice(allClients, func(i, j int) bool {
-		return allClients[i].MaxIdleSec > allClients[j].MaxIdleSec
+	// ===== Top by idle =====
+	idleCopy := append([]ClientInfo(nil), allClients...)
+
+	sort.Slice(idleCopy, func(i, j int) bool {
+		return idleCopy[i].MaxIdleSec > idleCopy[j].MaxIdleSec
 	})
 
-	topIdle := topN(allClients, 10)
+	topIdle := topN(idleCopy, 10)
 
-	// summary
+	// Các pod kiểu:
+	// - redis-cmd
+	// - redis-commander
+	// thường giữ connection lâu nhưng không phải leak thật.
+	filteredSuspicious := make([]SuspiciousClient, 0, len(allSuspicious))
+
+	for _, s := range allSuspicious {
+		switch s.Deployment {
+		case "redis-cmd", "redis-commander":
+			// Skip operational/admin tools.
+			continue
+		}
+		filteredSuspicious = append(filteredSuspicious, s)
+	}
+
+	// Summary
 	totalConnections := 0
 	for _, c := range allClients {
 		totalConnections += c.ConnCount
 	}
 
 	criticalCount := 0
-	for _, s := range allSuspicious {
+	for _, s := range filteredSuspicious {
 		if s.Severity == "critical" {
 			criticalCount++
 		}
@@ -306,18 +328,18 @@ func (s *ConnectionService) AnalyzeConnections(ctx context.Context) (*AnalysisRe
 	summary := AnalysisSummary{
 		TotalConnections: totalConnections,
 		UniqueClients:    len(allClients),
-		SuspiciousCount:  len(allSuspicious),
+		SuspiciousCount:  len(filteredSuspicious),
 		CriticalCount:    criticalCount,
 	}
 
-	// recommendations
-	recommendations := buildRecommendations(allClients, allSuspicious)
+	// Recommendations
+	recommendations := buildRecommendations(allClients, filteredSuspicious)
 
 	return &AnalysisResponse{
 		Summary:          summary,
 		TopByConnections: topConn,
 		TopByIdle:        topIdle,
-		Suspicious:       allSuspicious,
+		Suspicious:       filteredSuspicious,
 		Recommendations:  recommendations,
 	}, nil
 }
