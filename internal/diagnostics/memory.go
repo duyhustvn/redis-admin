@@ -64,6 +64,28 @@ func (s *DiagnosticsService) GetMemory(ctx context.Context) ([]MemoryReport, err
 	return all, errors.Join(errs...)
 }
 
+// fetchMemory gọi INFO với 4 section để lấy đầy đủ thông tin bộ nhớ, eviction và persistence.
+//
+// Redis command: INFO memory stats persistence server
+//
+// Fields extracted theo section:
+//
+//	memory:
+//	  used_memory              → UsedMemoryBytes  (byte đang dùng thực tế)
+//	  used_memory_human        → UsedMemoryHuman  (dạng "1.20G" để hiển thị)
+//	  maxmemory                → MaxMemoryBytes   (giới hạn cấu hình; 0 = không giới hạn)
+//	  mem_fragmentation_ratio  → FragRatio        (>1.5 = phân mảnh cao → FragAlert=true)
+//
+//	stats:
+//	  evicted_keys             → EvictedKeysTotal  (tổng key bị xóa do đầy memory)
+//	  maxmemory_policy         → EvictionPolicy    (vd: allkeys-lru, volatile-lfu)
+//
+//	persistence:
+//	  rdb_last_bgsave_status   → RDBLastBgsaveStatus  ("ok" hoặc "err")
+//	  rdb_last_save_time       → RDBLastSaveTime       (unix timestamp của lần BGSAVE cuối)
+//	  rdb_changes_since_last_save → RDBChangesSinceSave (số write chưa được persist)
+//	  aof_enabled              → AOFEnabled            (1 = AOF đang bật)
+//	  aof_last_bgrewrite_status → AOFLastRewriteStatus ("ok" hoặc "err")
 func (s *DiagnosticsService) fetchMemory(ctx context.Context, addr, role string) (MemoryReport, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -71,11 +93,13 @@ func (s *DiagnosticsService) fetchMemory(ctx context.Context, addr, role string)
 	client := sentinel.NewDirectClient(addr, s.cfg.RedisPassword)
 	defer client.Close()
 
+	// Gộp 4 section trong một lần gọi để giảm round-trip.
 	raw, err := client.Info(ctx, "memory", "stats", "persistence", "server").Result()
 	if err != nil {
 		return MemoryReport{}, fmt.Errorf("INFO on %s: %w", addr, sentinel.ErrNodeUnreachable)
 	}
 
+	// parseInfoAll gộp toàn bộ "key:value\r\n" từ mọi section thành map phẳng.
 	kv := parseInfoAll(raw)
 
 	report := MemoryReport{
@@ -93,6 +117,8 @@ func (s *DiagnosticsService) fetchMemory(ctx context.Context, addr, role string)
 	report.FragAlert = report.FragRatio > 1.5
 
 	report.EvictedKeysTotal, _ = strconv.ParseInt(kv["evicted_keys"], 10, 64)
+	// evictionRate tính delta evicted_keys/giây so với lần gọi trước để phát hiện
+	// eviction đột biến mà tổng cộng dồn không phản ánh được.
 	report.EvictedKeysPerSec = s.evictionRate(addr, report.EvictedKeysTotal)
 
 	rdbSave, _ := strconv.ParseInt(kv["rdb_saves"], 10, 64)

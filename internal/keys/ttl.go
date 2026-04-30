@@ -60,6 +60,21 @@ func (s *Service) GetTTLReport(ctx context.Context) ([]NamespaceTTLReport, error
 	return reports, nil
 }
 
+// collectTTLStats quét toàn bộ keyspace và kiểm tra TTL từng key để tính tỷ lệ
+// key không có TTL (persistent) per namespace.
+//
+// Redis commands (2 lệnh per key):
+//
+//  1. SCAN cursor MATCH * COUNT 200
+//     → duyệt keyspace theo batch, không block Redis (xem scanNode để biết thêm).
+//
+//  2. TTL <key>  → trả về time.Duration:
+//     -1s = key tồn tại nhưng không có expiry  → tính vào noTTL count
+//     -2s = key không tồn tại (bị evict giữa SCAN và TTL)  → bỏ qua
+//     Ns  = còn N giây sống  → tính vào total nhưng không vào noTTL
+//
+// Lý do chỉ dùng TTL (không PTTL): độ chính xác millisecond không cần thiết
+// cho phân tích sức khoẻ TTL ở cấp namespace.
 func (s *Service) collectTTLStats(ctx context.Context, addr string, ns map[string]*nsStat) error {
 	client := sentinel.NewDirectClient(addr, s.cfg.RedisPassword)
 	defer client.Close()
@@ -96,7 +111,7 @@ func (s *Service) collectTTLStats(ctx context.Context, addr string, ns map[strin
 				ns[name] = st
 			}
 			st.total++
-			// TTL == -1 means key exists but has no expiry set.
+			// -1s = key tồn tại vĩnh viễn (no expiry).
 			if ttlDur.Seconds() == -1 {
 				st.noTTL++
 			}

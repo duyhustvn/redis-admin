@@ -161,6 +161,13 @@ func (s *TopologyService) reachableSentinel(ctx context.Context) (*redis.Sentine
 }
 
 // fetchNodeInfo connects directly to a node and parses INFO clients + server.
+//
+// Redis command: INFO clients server
+//
+// Fields extracted:
+//   - connected_clients  (section: clients) → NodeInfo.ConnectedClients
+//   - uptime_in_seconds  (section: server)  → NodeInfo.UptimeSeconds
+//
 // On failure it returns a NodeInfo with IsHealthy=false rather than propagating
 // the error — topology should still return even if individual nodes are unreachable.
 func (s *TopologyService) fetchNodeInfo(ctx context.Context, addr, role string) NodeInfo {
@@ -169,6 +176,8 @@ func (s *TopologyService) fetchNodeInfo(ctx context.Context, addr, role string) 
 	client := NewDirectClient(addr, s.cfg.RedisPassword)
 	defer client.Close()
 
+	// INFO clients server trả về text dạng "key:value\r\n" theo từng section.
+	// parseInfoSection gộp tất cả section thành một map phẳng để dễ tra cứu.
 	raw, err := client.Info(ctx, "clients", "server").Result()
 	if err != nil {
 		s.logger.Warn("INFO failed on node",

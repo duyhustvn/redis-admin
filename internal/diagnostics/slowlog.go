@@ -93,6 +93,21 @@ func (s *DiagnosticsService) GetSlowlog(ctx context.Context, limit int) ([]Slowl
 	return all, errors.Join(errs...)
 }
 
+// fetchSlowlog lấy tối đa count bản ghi từ slow query log của một node.
+//
+// Redis command: SLOWLOG GET <count>
+//
+// Redis ghi vào slowlog mỗi lệnh có thời gian thực thi vượt ngưỡng slowlog-log-slower-than
+// (mặc định 10 000 µs). Mỗi bản ghi trả về:
+//   - ID         → số thứ tự monotonic trong log của node đó
+//   - Time       → thời điểm lệnh bắt đầu chạy (Unix timestamp)
+//   - Duration   → thời gian thực thi (microseconds) — đây là trường sắp xếp chính
+//   - Args       → các token của lệnh gốc (đã bị cắt ngắn nếu quá dài)
+//   - ClientAddr → IP:port của client gửi lệnh
+//   - ClientName → tên client (nếu client đã gọi CLIENT SETNAME)
+//
+// Lý do fetch 128 rồi mới cắt ở GetSlowlog: mỗi node có log riêng, nên cần lấy
+// đủ nhiều từ mỗi node trước khi merge + sort toàn cluster.
 func (s *DiagnosticsService) fetchSlowlog(ctx context.Context, addr string, count int64) ([]SlowlogEntry, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

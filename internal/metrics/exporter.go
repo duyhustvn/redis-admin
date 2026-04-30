@@ -154,6 +154,18 @@ func (e *Exporter) collect(ctx context.Context) {
 	}
 }
 
+// collectNodeMemory gọi INFO memory stats để cập nhật Prometheus gauge metrics cho một node.
+//
+// Redis command: INFO memory stats
+//
+// Fields extracted:
+//   - used_memory              (section memory) → redis_used_memory_bytes gauge
+//   - mem_fragmentation_ratio  (section memory) → redis_memory_fragmentation_ratio gauge
+//   - evicted_keys             (section stats)  → redis_evicted_keys_total counter
+//
+// evicted_keys là giá trị cộng dồn từ khi node khởi động — phù hợp với Prometheus
+// Counter (chỉ tăng). Hiện tại chỉ register label mà chưa cộng delta; một exporter
+// production cần track delta giữa các lần scrape để tránh reset counter khi node restart.
 func (e *Exporter) collectNodeMemory(ctx context.Context, addr string) {
 	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -175,11 +187,7 @@ func (e *Exporter) collectNodeMemory(ctx context.Context, addr string) {
 		e.fragRatio.WithLabelValues(addr).Set(v)
 	}
 	if v, ok := parseFloat(kv["evicted_keys"]); ok {
-		// Use Add to accumulate; reset is not safe for counters — only add delta.
-		// For simplicity we set an absolute value via a gauge masquerading as counter.
-		// A real production exporter should track deltas.
 		_ = v
-		// evicted_keys is a monotonic counter; we record it as-is.
 		e.evictedKeys.WithLabelValues(addr)
 	}
 }

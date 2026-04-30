@@ -59,7 +59,18 @@ func New(cfg *config.Config, svc sentinel.Service, k8sClient k8sclient.Interface
 
 const seedPipelineBatch = 100
 
-// Seed generates count keys under prefix using keyType on the current master.
+// Seed tạo count key giả trên master để phục vụ chaos testing và load simulation.
+//
+// Redis commands (qua Pipeline, flush mỗi 100 lệnh):
+//   string: SET  <prefix><i> <value>
+//   hash:   HSET <prefix><i> field <value>
+//   list:   RPUSH <prefix><i> <value>
+//   set:    SADD  <prefix><i> <value>
+//   zset:   ZADD  <prefix><i> <score> <member>
+//   + EXPIRE <key> <ttlSec>  (nếu ttlSec > 0, append ngay sau lệnh write)
+//
+// Pipeline giảm số round-trip từ N xuống ceil(N/100) — thay vì gửi từng lệnh
+// một, gom thành batch rồi gửi cùng lúc và đọc toàn bộ response trong một lần.
 // Supported types: string (default), hash, list, set, zset.
 // ttlSec == 0 means no expiry.
 func (s *ChaosService) Seed(ctx context.Context, prefix string, count, valueSize int, keyType string, ttlSec int64) (*SeedResult, error) {
@@ -139,8 +150,15 @@ func (s *ChaosService) Seed(ctx context.Context, prefix string, count, valueSize
 	}, nil
 }
 
-// Flush deletes all keys matching pattern on the master using SCAN+DEL.
-// Never calls FLUSHALL/FLUSHDB so only keys matching the pattern are removed.
+// Flush xóa toàn bộ key khớp pattern trên master bằng SCAN + DEL.
+//
+// Redis commands:
+//  1. SCAN cursor MATCH <pattern> COUNT 200 → tìm key theo batch
+//  2. DEL key1 key2 ... keyN → xóa cả batch trong một lần gọi (variadic DEL)
+//
+// Không dùng FLUSHALL/FLUSHDB để tránh xóa key ngoài pattern.
+// Variadic DEL giảm round-trip so với gọi DEL từng key một — toàn bộ batch
+// được xóa trong một request/response cycle.
 func (s *ChaosService) Flush(ctx context.Context, pattern string) (*FlushResult, error) {
 	if pattern == "" {
 		pattern = "test:*"

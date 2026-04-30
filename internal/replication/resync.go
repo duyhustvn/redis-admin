@@ -54,6 +54,20 @@ func (s *ReplicationService) GetResyncStats(ctx context.Context) ([]ResyncReport
 	return all, errors.Join(errs...)
 }
 
+// fetchResync gọi INFO replication để lấy số lần full resync và trạng thái replication backlog.
+//
+// Redis command: INFO replication
+//
+// Fields extracted:
+//   - total_resyncs_processed → TotalResyncs      (số lần replica đã phải full resync;
+//     có từ Redis 6.2 — trên phiên bản cũ hơn sẽ là 0)
+//   - repl_backlog_size       → BacklogSize        (tổng dung lượng backlog buffer, bytes)
+//   - repl_backlog_active     → BacklogActiveSize  (phần backlog đang chứa dữ liệu chưa được xác nhận)
+//
+// BacklogAlert = true khi BacklogActiveSize > 90% BacklogSize.
+// Khi backlog đầy, nếu một replica disconnect rồi reconnect, master không còn đủ
+// dữ liệu để gửi partial resync → replica buộc phải full resync (RDB dump toàn bộ),
+// gây tăng đột biến network I/O và CPU.
 func (s *ReplicationService) fetchResync(ctx context.Context, addr, role string) (ResyncReport, error) {
 	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -72,7 +86,6 @@ func (s *ReplicationService) fetchResync(ctx context.Context, addr, role string)
 		Role:     role,
 	}
 
-	// total_resyncs_processed is exposed since Redis 6.2.
 	r.TotalResyncs, _ = strconv.ParseInt(kv["total_resyncs_processed"], 10, 64)
 	r.BacklogSize, _ = strconv.ParseInt(kv["repl_backlog_size"], 10, 64)
 	r.BacklogActiveSize, _ = strconv.ParseInt(kv["repl_backlog_active"], 10, 64)

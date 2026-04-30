@@ -25,8 +25,19 @@ type ReplicaDistribution struct {
 	Overloaded bool    `json:"overloaded"` // true when this replica carries >80% of total cluster reads
 }
 
-// GetDistribution fetches INFO commandstats from every replica, classifies each
-// command as read or write, and flags replicas that carry >80% of total cluster reads.
+// GetDistribution đo phân phối tải read/write trên từng replica và phát hiện replica
+// đang gánh quá nhiều traffic đọc so với phần còn lại của cluster.
+//
+// Luồng xử lý:
+//  1. GetNodeAddresses → lấy danh sách replica từ Sentinel (master bị bỏ qua vì
+//     đọc trên master là dấu hiệu cấu hình sai, không phải "phân phối tải").
+//  2. Với mỗi replica gọi fetchCommandDist (INFO commandstats) để đếm read/write calls.
+//  3. Sau khi có đủ số liệu từ tất cả replica, tính tổng cluster reads rồi so sánh
+//     từng replica: nếu một replica xử lý > 80% tổng reads → đánh dấu Overloaded=true.
+//
+// Ngưỡng 80% được chọn vì với 2 replica thì phân bổ lý tưởng là 50/50; nếu một
+// replica vượt 80% nghĩa là replica kia gần như không được dùng — thường do client
+// cấu hình sai ReadPreference hoặc DNS/Envoy chỉ route về một pod.
 func (s *ConnectionService) GetDistribution(ctx context.Context) ([]ReplicaDistribution, error) {
 	addrs, err := s.sentinelSvc.GetNodeAddresses(ctx)
 	if err != nil {
@@ -36,8 +47,6 @@ func (s *ConnectionService) GetDistribution(ctx context.Context) ([]ReplicaDistr
 	var results []ReplicaDistribution
 	var errs []error
 
-	// Collect stats from every node (master included for context) but we only
-	// surface replicas in the final list.
 	for _, addr := range addrs.Replicas {
 		dist, err := s.fetchCommandDist(ctx, addr)
 		if err != nil {
@@ -51,7 +60,8 @@ func (s *ConnectionService) GetDistribution(ctx context.Context) ([]ReplicaDistr
 		results = append(results, dist)
 	}
 
-	// Flag overloaded: replica with >80% of total cluster reads.
+	// Tính tổng reads toàn cluster rồi flag replica nào chiếm > 80%.
+	// Phải làm sau khi có đủ kết quả từ tất cả replica vì cần mẫu số là tổng cluster.
 	var totalReads int64
 	for _, r := range results {
 		totalReads += r.ReadCount
@@ -67,6 +77,23 @@ func (s *ConnectionService) GetDistribution(ctx context.Context) ([]ReplicaDistr
 	return results, errors.Join(errs...)
 }
 
+// fetchCommandDist gọi INFO commandstats để lấy số lần gọi theo từng lệnh Redis,
+// sau đó phân loại thành read/write để tính tỷ lệ phân phối tải trên replica.
+//
+// Redis command: INFO commandstats
+//
+// Output format (mỗi dòng một lệnh đã được gọi ít nhất một lần):
+//
+//	cmdstat_get:calls=1000,usec=4500,usec_per_call=4.50,rejected_calls=0,failed_calls=0
+//	cmdstat_set:calls=200,usec=900,usec_per_call=4.50,rejected_calls=0,failed_calls=0
+//	...
+//
+// Cách xử lý:
+//  1. Lọc các dòng bắt đầu bằng "cmdstat_" (bỏ qua header "#" và dòng trống).
+//  2. Tách tên lệnh từ prefix "cmdstat_<cmd>:...".
+//  3. Trích xuất giá trị "calls=N" từ phần sau dấu ':'.
+//  4. Tra cứu isReadCommand để phân loại read vs write.
+//  5. Tính ReadPct / WritePct = calls / total * 100.
 func (s *ConnectionService) fetchCommandDist(ctx context.Context, addr string) (ReplicaDistribution, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

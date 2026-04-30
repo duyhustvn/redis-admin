@@ -125,8 +125,25 @@ func (l *PubSubListener) listenSentinel(ctx context.Context, addr string) {
 	}
 }
 
-// subscribe opens a PSubscribe("*") to one sentinel and reads until the context
-// is cancelled or an error occurs.
+// subscribe mở Pub/Sub đến một Sentinel node và đọc event liên tục cho đến khi ctx bị cancel.
+//
+// Redis command: PSUBSCRIBE *
+//
+// Gửi đến Sentinel node (port 26379), không phải Redis node (port 6379).
+// Pattern "*" subscribe tất cả channel — Sentinel publish event lên các channel cố định:
+//   +sdown           → node bị đánh dấu subjectively down (một sentinel phát hiện)
+//   -sdown           → node phục hồi
+//   +odown           → quorum đồng ý node down (objectively down)
+//   -odown           → quorum hủy trạng thái odown
+//   +switch-master   → master mới được bầu sau khi failover hoàn tất
+//   +slave-reconf-done → replica đã được reconfigure trỏ sang master mới
+//   +sentinel        → sentinel mới join cluster
+//
+// Payload format: "<role> <name> <ip> <port> @ <master-name> <master-ip> <master-port>"
+// parseEvent tách ip+port từ field [2] và [3] để điền NodeAddr vào SentinelEvent.
+//
+// ReadTimeout = 0 là bắt buộc với Pub/Sub — connection cần block indefinitely để nhận
+// message bất kỳ lúc nào; timeout thông thường sẽ làm đứt connection sau vài giây idle.
 func (l *PubSubListener) subscribe(ctx context.Context, addr string, flapTracker map[string]*flapWindow) error {
 	client := redis.NewClient(&redis.Options{
 		Addr:        addr,

@@ -27,12 +27,15 @@ const (
 	failoverPollInterval  = 1 * time.Second
 )
 
-// Failover performs (or simulates) a graceful failover:
-//  1. Pre-flight: quorum OK + lag check per replica
-//  2. Select best candidate (lowest replication lag)
-//  3. If dryRun → return preview; otherwise trigger SENTINEL FAILOVER
-//  4. Wait for new master to stabilise (up to 45 s)
-//  5. Send webhook notification on success
+// Failover thực hiện (hoặc mô phỏng) graceful failover với pre-flight checks.
+//
+// Luồng các lệnh Redis theo thứ tự:
+//  1. SENTINEL CKQUORUM <masterName>   → kiểm tra quorum (gửi đến sentinel port 26379)
+//  2. INFO replication (x2 per replica) → tính lag (master_repl_offset - slave_repl_offset)
+//     để chọn replica có lag thấp nhất làm ứng viên failover
+//  3. SENTINEL FAILOVER <masterName>   → kích hoạt failover (chỉ khi dryRun=false)
+//     gửi qua sc.Do() vì go-redis không có wrapper cho lệnh này
+//  4. Sentinel.GetMasterAddrByName (poll 1s/lần, tối đa 45s) → đợi master mới xuất hiện
 func (s *OperationsService) Failover(ctx context.Context, dryRun bool) (*FailoverResult, error) {
 	start := time.Now()
 	result := &FailoverResult{DryRun: dryRun}
@@ -177,6 +180,15 @@ func (s *OperationsService) fetchReplicaLag(ctx context.Context, masterAddr, rep
 	return lag, nil
 }
 
+// fetchReplOffset đọc một offset field từ INFO replication của một node.
+//
+// Redis command: INFO replication
+//
+// field nhận một trong hai giá trị:
+//   - "master_repl_offset" → offset hiện tại của master (gọi trên master)
+//   - "slave_repl_offset"  → offset mà replica đã áp dụng (gọi trên replica)
+//
+// Dùng chung cho cả master lẫn replica thay vì tạo hai hàm riêng.
 func (s *OperationsService) fetchReplOffset(ctx context.Context, addr, field string) (int64, error) {
 	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

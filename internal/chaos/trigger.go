@@ -32,6 +32,15 @@ func (s *ChaosService) TriggerChaosFailover(ctx context.Context, mode, podNamesp
 	}
 }
 
+// sentinelFailover kích hoạt failover không có pre-check qua SENTINEL FAILOVER.
+//
+// Redis commands (gửi đến sentinel port 26379):
+//  1. PING → kiểm tra sentinel reachable; thử lần lượt từng địa chỉ trong danh sách.
+//  2. SENTINEL FAILOVER <masterName> → yêu cầu sentinel bầu master mới ngay lập tức.
+//     Dùng sc.Do() vì go-redis không có wrapper cho lệnh này.
+//
+// Khác với operations.Failover(): không có quorum check, lag check, hay dry-run —
+// thiết kế cho chaos testing, ưu tiên tốc độ trigger hơn an toàn.
 func (s *ChaosService) sentinelFailover(ctx context.Context, start time.Time) (*ChaosFailoverResult, error) {
 	var target string
 	for _, addr := range s.cfg.SentinelAddrs {

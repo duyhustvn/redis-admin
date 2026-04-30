@@ -53,15 +53,24 @@ func New(cfg *config.Config, svc sentinel.Service, logger *zap.Logger) *Service 
 
 const scanBatchSize = 200
 
-// ScanBigKeys performs a non-blocking SCAN across replica nodes (master if none).
-// Each key larger than thresholdBytes triggers onKey. Returns per-namespace aggregates.
+// ScanBigKeys quét toàn bộ keyspace để tìm key vượt ngưỡng kích thước, gom kết quả
+// theo namespace (prefix trước dấu ':'), và gọi callback onKey cho mỗi key tìm được.
+//
+// Luồng xử lý:
+//  1. GetNodeAddresses → lấy danh sách node từ Sentinel.
+//  2. Ưu tiên chạy trên replica để không tải master; fallback về master nếu không có replica.
+//  3. Với mỗi node gọi scanNode → lặp SCAN → inspectKey từng key.
+//  4. Gom thống kê per-namespace (KeyCount, TotalBytes, AvgBytes, MaxBytes).
+//
+// onKey callback được gọi ngay khi tìm thấy key đủ lớn — dùng cho SSE streaming
+// để client nhận kết quả liên tục thay vì chờ scan xong toàn bộ.
 func (s *Service) ScanBigKeys(ctx context.Context, thresholdBytes int64, onKey func(KeyReport)) ([]NamespaceStat, error) {
 	addrs, err := s.sentinelSvc.GetNodeAddresses(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("scan bigkeys: %w", err)
 	}
 
-	// Prefer replicas to avoid load on master.
+	// Ưu tiên replica để không block master đang xử lý write.
 	targets := addrs.Replicas
 	if len(targets) == 0 {
 		targets = []string{addrs.Master}
@@ -85,6 +94,16 @@ func (s *Service) ScanBigKeys(ctx context.Context, thresholdBytes int64, onKey f
 	return stats, nil
 }
 
+// scanNode duyệt toàn bộ keyspace của một node bằng SCAN theo từng batch.
+//
+// Redis command: SCAN cursor MATCH * COUNT 200
+//
+// Output mỗi lần gọi SCAN:
+//   - []string keys: các key trong batch hiện tại (số lượng xấp xỉ COUNT, không chính xác)
+//   - uint64 next:   cursor cho lần gọi tiếp theo; bằng 0 nghĩa là đã duyệt hết
+//
+// SCAN không block Redis (khác KEYS *) — mỗi lần gọi xử lý một phần nhỏ của keyspace
+// rồi trả về cursor để tiếp tục. sleep 1ms giữa các batch để tránh chiếm CPU Redis.
 func (s *Service) scanNode(ctx context.Context, addr string, thresholdBytes int64, onKey func(KeyReport), ns map[string]*NamespaceStat) error {
 	client := sentinel.NewDirectClient(addr, s.cfg.RedisPassword)
 	defer client.Close()
@@ -114,17 +133,36 @@ func (s *Service) scanNode(ctx context.Context, addr string, thresholdBytes int6
 			break
 		}
 
-		// Brief pause between batches to avoid starving Redis.
+		// Nhường CPU Redis giữa mỗi batch để không ảnh hưởng latency của client thật.
 		time.Sleep(time.Millisecond)
 	}
 	return nil
 }
 
+// inspectKey kiểm tra một key: đo kích thước, nếu vượt ngưỡng thì lấy thêm type + TTL
+// và đưa vào kết quả. Thiết kế "check trước, gọi thêm sau" giảm số round-trip đáng kể
+// vì phần lớn key trong thực tế nhỏ hơn ngưỡng.
+//
+// Redis commands (theo thứ tự, có điều kiện):
+//
+//  1. MEMORY USAGE <key> SAMPLES 0
+//     → trả về int64 bytes (bao gồm cả overhead encoding của Redis)
+//     → SAMPLES 0: ước tính dựa trên encoding header thay vì sample toàn bộ value
+//        — nhanh hơn nhiều, đủ chính xác để so ngưỡng
+//     → lỗi hoặc sizeBytes < thresholdBytes → return ngay, bỏ qua TYPE + TTL
+//
+//  2. TYPE <key>   (chỉ gọi khi key vượt ngưỡng)
+//     → trả về "string" | "hash" | "list" | "set" | "zset" | "stream" | "none"
+//
+//  3. TTL <key>    (chỉ gọi khi key vượt ngưỡng)
+//     → trả về time.Duration; chuyển sang giây
+//     → -1s = key không có TTL (tồn tại vĩnh viễn)
+//     → -2s = key không tồn tại (đã bị evict giữa lúc SCAN và TTL)
 func (s *Service) inspectKey(ctx context.Context, client *redis.Client, addr, key string, thresholdBytes int64, onKey func(KeyReport), ns map[string]*NamespaceStat) {
 	memCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	// SAMPLES 0 = estimate based on encoding header only, fastest mode.
 	sizeBytes, err := client.MemoryUsage(memCtx, key, 0).Result()
 	cancel()
+	// Bỏ qua key nhỏ hơn ngưỡng để tránh gọi TYPE + TTL không cần thiết.
 	if err != nil || sizeBytes < thresholdBytes {
 		return
 	}
@@ -150,6 +188,7 @@ func (s *Service) inspectKey(ctx context.Context, client *redis.Client, addr, ke
 		onKey(report)
 	}
 
+	// Cập nhật thống kê per-namespace để trả về aggregates.
 	st, ok := ns[namespace]
 	if !ok {
 		st = &NamespaceStat{Namespace: namespace}

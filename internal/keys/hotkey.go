@@ -48,11 +48,31 @@ func (s *Service) GetHotkeys(ctx context.Context, topN int) ([]HotKeyReport, err
 	return result, nil
 }
 
+// collectHotkeys quét toàn bộ keyspace của một node để tìm top-N key có tần suất truy cập cao nhất.
+//
+// Luồng xử lý gồm 3 lệnh Redis:
+//
+// 1. CONFIG GET maxmemory-policy
+//   - Xác nhận node đang dùng LFU eviction policy (allkeys-lfu hoặc volatile-lfu).
+//   - Nếu không phải LFU, OBJECT FREQ sẽ luôn trả về 0 nên hàm trả lỗi sớm.
+//
+// 2. SCAN cursor MATCH * COUNT scanBatchSize  (lặp cho đến cursor = 0)
+//   - Duyệt keyspace theo từng batch (không block Redis như KEYS *).
+//   - Mỗi lần trả về một slice key và cursor tiếp theo; cursor = 0 báo hết vòng.
+//
+// 3. OBJECT FREQ <key>  (cho từng key trong batch)
+//   - Trả về LFU access frequency counter (0–255, logarithmic scale).
+//   - Giá trị này do Redis cập nhật theo mỗi lần key được đọc/ghi.
+//   - Dùng min-heap (hotHeap) để duy trì top-N hiệu quả: nếu freq mới lớn hơn
+//     phần tử nhỏ nhất trong heap thì thay thế, giữ heap đúng kích thước topN.
+//
+// 4. TYPE <key>  (cho từng key lọt vào heap)
+//   - Lấy kiểu dữ liệu (string/hash/list/set/zset/stream) để đưa vào report.
 func (s *Service) collectHotkeys(ctx context.Context, addr string, topN int, h *hotHeap) error {
 	client := sentinel.NewDirectClient(addr, s.cfg.RedisPassword)
 	defer client.Close()
 
-	// Verify LFU policy is active before scanning.
+	// Bước 1: kiểm tra LFU policy trước khi scan để tránh scan vô ích.
 	cfgCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	vals, err := client.ConfigGet(cfgCtx, "maxmemory-policy").Result()
 	cancel()
@@ -67,6 +87,7 @@ func (s *Service) collectHotkeys(ctx context.Context, addr string, topN int, h *
 		return fmt.Errorf("node %s: maxmemory-policy %q is not an LFU policy — OBJECT FREQ unavailable", addr, policy)
 	}
 
+	// Bước 2: SCAN toàn keyspace theo batch để không block Redis.
 	var cursor uint64
 	for {
 		if ctx.Err() != nil {
@@ -85,6 +106,7 @@ func (s *Service) collectHotkeys(ctx context.Context, addr string, topN int, h *
 				return ctx.Err()
 			}
 
+			// Bước 3: OBJECT FREQ lấy LFU counter của key.
 			freqCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			freq, err := client.ObjectFreq(freqCtx, key).Result()
 			cancel()
@@ -92,6 +114,7 @@ func (s *Service) collectHotkeys(ctx context.Context, addr string, topN int, h *
 				continue
 			}
 
+			// Bước 4: TYPE chỉ gọi khi key đủ điều kiện vào heap, giảm số round-trip.
 			typeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			keyType, _ := client.Type(typeCtx, key).Result()
 			cancel()
@@ -104,6 +127,7 @@ func (s *Service) collectHotkeys(ctx context.Context, addr string, topN int, h *
 				Namespace: keyNamespace(key),
 			}
 
+			// Duy trì min-heap kích thước topN: thay thế phần tử nhỏ nhất nếu freq mới lớn hơn.
 			if h.Len() < topN {
 				heap.Push(h, entry)
 			} else if h.Len() > 0 && freq > (*h)[0].Frequency {

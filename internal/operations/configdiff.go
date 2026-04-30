@@ -25,8 +25,16 @@ type ConfigDiff struct {
 	IsDrift bool              `json:"is_drift"`
 }
 
-// GetConfigDiff runs CONFIG GET * on every node and returns keys whose values
-// differ across nodes.
+// GetConfigDiff chạy CONFIG GET * trên mọi node rồi so sánh từng key để tìm config drift —
+// những key có giá trị khác nhau giữa master và replica.
+//
+// Luồng xử lý:
+//  1. Với mỗi node gọi fetchAllConfig (CONFIG GET *) → map đầy đủ config.
+//  2. Gom vào configMap[key][nodeAddr] = value.
+//  3. Chỉ giữ lại key có ít nhất 2 node VÀ có giá trị khác nhau → IsDrift=true.
+//
+// Config drift thường xảy ra khi một node được restart với config file khác,
+// hoặc sau khi CONFIG SET được gọi thủ công trên một node mà không chạy CONFIG REWRITE.
 func (s *OperationsService) GetConfigDiff(ctx context.Context) ([]ConfigDiff, error) {
 	addrs, err := s.sentinelSvc.GetNodeAddresses(ctx)
 	if err != nil {
@@ -91,6 +99,13 @@ func (s *OperationsService) GetConfigDiff(ctx context.Context) ([]ConfigDiff, er
 	return diffs, errors.Join(errs...)
 }
 
+// fetchAllConfig lấy toàn bộ config đang chạy của một node.
+//
+// Redis command: CONFIG GET *
+//
+// Output: map[string]string với mọi config key-value hiện tại của node.
+// Timeout 10s (thay vì 5s mặc định) vì CONFIG GET * trả về hàng trăm key
+// và Redis serialize toàn bộ trước khi gửi.
 func (s *OperationsService) fetchAllConfig(ctx context.Context, addr string) (map[string]string, error) {
 	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -105,9 +120,16 @@ func (s *OperationsService) fetchAllConfig(ctx context.Context, addr string) (ma
 	return vals, nil
 }
 
-// SetConfig applies a CONFIG SET on a specific node and records the change in the audit log.
+// SetConfig áp dụng thay đổi config lên một node và ghi vào audit log.
+//
+// Redis commands (tuần tự):
+//  1. CONFIG GET <key>       → đọc giá trị cũ để ghi audit (xem fetchConfigKey).
+//  2. CONFIG SET <key> <value> → áp dụng thay đổi ngay lập tức, không cần restart.
+//
+// Lưu ý: CONFIG SET chỉ thay đổi config trong memory — nếu node restart sẽ
+// đọc lại config file và mất thay đổi. Dùng CONFIG REWRITE để persist nếu cần.
 func (s *OperationsService) SetConfig(ctx context.Context, nodeAddr, key, value, remoteIP string) error {
-	// Read current value first for the audit record.
+	// Đọc giá trị cũ trước khi SET để ghi đầy đủ vào audit log.
 	oldVal, err := s.fetchConfigKey(ctx, nodeAddr, key)
 	if err != nil {
 		s.logger.Warn("could not read old config value before SET",
@@ -152,6 +174,12 @@ func (s *OperationsService) GetAuditLog() []AuditEntry {
 	return s.audit.list()
 }
 
+// fetchConfigKey đọc giá trị hiện tại của một config key cụ thể.
+//
+// Redis command: CONFIG GET <key>
+//
+// Output: map[string]string → thường chỉ có một entry {key: value}.
+// Trả về chuỗi rỗng nếu key không tồn tại (không phải lỗi).
 func (s *OperationsService) fetchConfigKey(ctx context.Context, addr, key string) (string, error) {
 	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

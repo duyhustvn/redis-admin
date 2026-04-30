@@ -90,8 +90,17 @@ func New(
 	}
 }
 
-// GetConnections fetches CLIENT LIST from every node, groups by source IP,
-// enriches with pod metadata
+// GetConnections lấy danh sách connection từ tất cả node trong cluster (master + replicas),
+// gom nhóm theo source IP, và đánh dấu các client bất thường.
+//
+// Luồng xử lý:
+//  1. GetNodeAddresses → hỏi Sentinel để lấy địa chỉ master và toàn bộ replica.
+//  2. Với mỗi node gọi fetchNodeConnections (CLIENT LIST) để lấy raw connection list.
+//  3. Kết quả mỗi node được trả về độc lập dưới dạng NodeConnections — caller
+//     (AnalyzeConnections) sẽ merge các node lại thành view toàn cluster.
+//
+// Lỗi từng node không dừng toàn bộ hàm — node nào lỗi thì bị skip và lỗi được
+// gom vào errors.Join để trả về cùng kết quả partial.
 func (s *ConnectionService) GetConnections(ctx context.Context) ([]NodeConnections, error) {
 	addrs, err := s.sentinelSvc.GetNodeAddresses(ctx)
 	if err != nil {
@@ -121,7 +130,30 @@ func (s *ConnectionService) GetConnections(ctx context.Context) ([]NodeConnectio
 	return results, errors.Join(errs...)
 }
 
-// fetchNodeConnections runs CLIENT LIST on addr, aggregates by source IP
+// fetchNodeConnections chạy CLIENT LIST trên một node, gom nhóm theo source IP,
+// bổ sung pod metadata từ K8s cache, rồi phát hiện connection bất thường.
+//
+// Redis command: CLIENT LIST
+//
+// Output format — mỗi dòng là một connection đang mở, các field cách nhau bằng dấu cách:
+//
+//	id=123 addr=10.0.0.5:54321 laddr=10.0.0.1:6379 fd=8 name= age=0 idle=120
+//	cmd=get flags=N db=0 sub=0 psub=0 multi=-1 qbuf=0 qbuf-free=32768 ...
+//
+// Các field được sử dụng:
+//   - addr    → "IP:port" của client; lấy phần IP để gom nhóm (nhiều conn cùng pod → cùng IP)
+//   - flags   → bỏ qua dòng có flag "S" (slave/replica link) và "M" (master link) —
+//               đây là kết nối nội bộ Redis, không phải client ứng dụng
+//   - idle    → số giây không có lệnh nào; giữ giá trị lớn nhất trong group (MaxIdleSec)
+//   - qbuf   → số byte đang chờ trong input buffer; giữ giá trị lớn nhất (MaxQBufBytes)
+//
+// Sau khi gom nhóm:
+//   - enrichWithPodInfo tra cứu K8s PodCache bằng source IP để điền PodName/Namespace/Deployment.
+//
+// Phát hiện suspicious (áp dụng theo thứ tự ưu tiên, chỉ gán một rule cho mỗi client):
+//   - critical: ConnCount >= 5 VÀ MaxIdleSec > 86400 (1 ngày) → rò rỉ connection nghiêm trọng
+//   - warning:  ConnCount >= 3 VÀ MaxIdleSec > 300  (5 phút) → có khả năng rò rỉ pool
+//   - warning:  MaxIdleSec > 3600 (1 giờ) đơn thuần      → zombie connection
 func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role string) (NodeConnections, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -134,7 +166,7 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 		return NodeConnections{}, fmt.Errorf("CLIENT LIST on %s: %w", addr, err)
 	}
 
-	// Aggregate raw connections by source IP.
+	// Gom nhóm các connection theo source IP.
 	byIP := make(map[string]*ClientInfo)
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
@@ -143,7 +175,7 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 		}
 		fields := parseKVLine(line)
 
-		// bỏ qua connection nội bộ Redis như replication/sentinel/internal link.
+		// Flag "S" = slave/replica link — kết nối nội bộ Redis, không phải client ứng dụng.
 		if strings.Contains(fields["flags"], "S") {
 			continue
 		}
@@ -174,14 +206,15 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 
 	nc := NodeConnections{NodeAddr: addr, Role: role, Total: totalConnections, UniqueClients: len(byIP)}
 	for _, ci := range byIP {
+		// Tra K8s cache để gắn tên Pod/Namespace/Deployment vào từng nhóm IP.
 		enrichWithPodInfo(ci, s.podCache)
 		nc.Clients = append(nc.Clients, *ci)
 	}
 
-	// Detect suspicious clients (connection leak / abnormal)
+	// Phát hiện suspicious — kiểm tra theo thứ tự ưu tiên (critical trước warning).
 	for _, ci := range nc.Clients {
 
-		// Rule 3: severe leak conn_count >= 5 AND max_idle_sec > 1 ngày
+		// Rule critical: nhiều connection lâu ngày không đóng → rò rỉ nghiêm trọng.
 		if ci.ConnCount >= 5 && ci.MaxIdleSec > 86400 {
 			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
 				SourceAddr: ci.SourceAddr,
@@ -194,7 +227,7 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 			continue
 		}
 
-		// Rule 1: possible leak conn_count >= 3 AND max_idle_sec > 300s (5 phút)
+		// Rule warning: pool mở nhiều connection nhưng không dùng → có thể rò rỉ pool.
 		if ci.ConnCount >= 3 && ci.MaxIdleSec > 300 {
 			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
 				SourceAddr: ci.SourceAddr,
@@ -207,7 +240,7 @@ func (s *ConnectionService) fetchNodeConnections(ctx context.Context, addr, role
 			continue
 		}
 
-		// Rule 2: zombie max_idle_sec > 3600 (1 giờ)
+		// Rule warning: connection đơn lẻ idle quá lâu → zombie, nên bị TCP keepalive đóng.
 		if ci.MaxIdleSec > 3600 {
 			nc.Suspicious = append(nc.Suspicious, SuspiciousClient{
 				SourceAddr: ci.SourceAddr,

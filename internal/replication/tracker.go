@@ -92,6 +92,14 @@ func (s *ReplicationService) GetReplicationLag(ctx context.Context) ([]ReplicaLa
 	return all, errors.Join(errs...)
 }
 
+// fetchMasterOffset gọi INFO replication trên master để lấy vị trí replication log hiện tại.
+//
+// Redis command: INFO replication
+//
+// Field extracted:
+//   - master_repl_offset → offset hiện tại của replication backlog trên master.
+//     Đây là số byte đã được ghi vào replication stream; replica dùng giá trị này
+//     để tính độ trễ (lag = master_repl_offset - slave_repl_offset).
 func (s *ReplicationService) fetchMasterOffset(ctx context.Context, addr string) (int64, error) {
 	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -108,6 +116,17 @@ func (s *ReplicationService) fetchMasterOffset(ctx context.Context, addr string)
 	return offset, nil
 }
 
+// fetchReplicaLag gọi INFO replication trên replica và tính độ trễ so với master.
+//
+// Redis command: INFO replication
+//
+// Field extracted:
+//   - slave_repl_offset → offset mà replica đã nhận và áp dụng từ replication stream.
+//
+// Tính toán:
+//   lagBytes = masterOffset - slave_repl_offset
+//   Giá trị dương = replica đang bị trễ; âm được clamp về 0 (xảy ra khi replica
+//   vừa bắt kịp ngay trước lần đọc master_repl_offset).
 func (s *ReplicationService) fetchReplicaLag(ctx context.Context, addr string, masterOffset int64) (ReplicaLag, error) {
 	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
